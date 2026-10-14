@@ -14,7 +14,12 @@ const app = express();
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or same-origin)
+      if (!origin) return callback(null, true);
+      // Allow localhost, 127.0.0.1, or any LAN IP/host
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
