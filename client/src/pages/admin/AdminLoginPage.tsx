@@ -1,0 +1,122 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Lock, ShieldAlert, ArrowRight, Plane } from 'lucide-react';
+import { adminApi } from '../../services/api';
+import { useAdminAuth } from '../../context/AdminAuthContext';
+
+export const AdminLoginPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { loginAdmin } = useAdminAuth();
+
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('adminpassword123');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const basicToken = btoa(`${username}:${password}`);
+      const res = await adminApi.verify(basicToken);
+
+      if (res.data.success) {
+        loginAdmin(basicToken, username);
+        navigate('/admin/dashboard', { replace: true });
+      }
+    } catch {
+      setError('HTTP 401 Unauthorized: Invalid administrator username or password.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-navy-950 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
+        
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex w-12 h-12 rounded-2xl bg-navy-950 items-center justify-center text-blue-400 mb-2">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div className="flex items-center justify-center space-x-2">
+            <span className="text-xl font-bold text-navy-950">
+              Credo<span className="text-blue-600">Fly</span>
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+              Admin
+            </span>
+          </div>
+          <h2 className="text-lg font-extrabold text-slate-900">
+            Restricted Access
+          </h2>
+          <p className="text-xs text-slate-500">
+            Please enter your administrator credentials (HTTP Basic Auth).
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center space-x-2">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Username
+            </label>
+            <input
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition"
+            >
+              {isLoading ? (
+                <span>Authenticating...</span>
+              ) : (
+                <>
+                  <span>Login</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+
+        <div className="pt-4 border-t border-slate-100 text-center">
+          <p className="text-[11px] text-slate-400">
+            Default credentials configured in <code className="font-mono">.env</code>: admin / adminpassword123
+          </p>
+        </div>
+
+      </div>
+    </div>
+  );
+};

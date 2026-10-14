@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String?   @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[]
+
+  @@map("users")
+}
+
+model Flight {
+  id          String           @id @default(uuid())
+  flightCode  String           @unique
+  origin      String
+  destination String
+  capacity    Int
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  schedules   FlightSchedule[]
+  instances   FlightInstance[]
+
+  @@index([origin, destination])
+  @@map("flights")
+}
+
+model FlightSchedule {
+  id            String           @id @default(uuid())
+  flightId      String
+  flight        Flight           @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  dayOfWeek     Int              // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  departureTime String           // Format: "HH:mm"
+  arrivalTime   String           // Format: "HH:mm"
+  adultFare     Decimal          @db.Decimal(10, 2)
+  childFare     Decimal          @db.Decimal(10, 2)
+  isOperating   Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  instances     FlightInstance[]
+
+  @@unique([flightId, dayOfWeek])
+  @@map("flight_schedules")
+}
+
+model FlightInstance {
+  id             String          @id @default(uuid())
+  flightId       String
+  flight         Flight          @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  scheduleId     String?
+  schedule       FlightSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  travelDate     DateTime        @db.Date
+  departureTime  String
+  arrivalTime    String
+  adultFare      Decimal         @db.Decimal(10, 2)
+  childFare      Decimal         @db.Decimal(10, 2)
+  availableSeats Int
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  bookings       Booking[]
+
+  @@unique([flightId, travelDate, departureTime])
+  @@index([travelDate])
+  @@map("flight_instances")
+}
+
+model Booking {
+  id                String         @id @default(uuid())
+  bookingReference  String         @unique // e.g., CF2026101501
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flightInstanceId  String
+  flightInstance    FlightInstance @relation(fields: [flightInstanceId], references: [id], onDelete: Restrict)
+  adultCount        Int
+  childCount        Int
+  adultFareSnapshot Decimal        @db.Decimal(10, 2)
+  childFareSnapshot Decimal        @db.Decimal(10, 2)
+  totalAmount       Decimal        @db.Decimal(10, 2)
+  status            String         // "CONFIRMED", "CANCELLED"
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  cancelledAt       DateTime?
+  passengers        Passenger[]
+  auditEvents       BookingEvent[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("bookings")
+}
+
+model Passenger {
+  id          String   @id @default(uuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  name        String
+  type        String   // "ADULT" or "CHILD"
+  isCancelled Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("passengers")
+}
+
+model BookingEvent {
+  id        String   @id @default(uuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  eventType String   // "CREATED", "PARTIAL_CANCELLATION", "FULL_CANCELLATION"
+  details   String
+  createdAt DateTime @default(now())
+
+  @@map("booking_events")
+}
