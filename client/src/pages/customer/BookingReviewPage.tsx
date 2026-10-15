@@ -40,14 +40,24 @@ export const BookingReviewPage: React.FC = () => {
   const { user } = useAuth();
 
   const instanceId = searchParams.get('instanceId');
+  const returnInstanceId = searchParams.get('returnInstanceId');
+  const isRoundTrip = !!returnInstanceId;
+
   const initialAdults = Math.max(1, Number(searchParams.get('adults')) || 1);
   const initialChildren = Math.max(0, Number(searchParams.get('children')) || 0);
   const cabinClassParam = searchParams.get('class') || 'ECONOMY';
 
   // Wizard state: 1 = Flight & Policy, 2 = Passenger Details, 3 = Review Itinerary
   const [step, setStep] = useState<number>(1);
+  
+  // Outbound flight & preview
   const [flight, setFlight] = useState<FlightInstanceDetail | null>(null);
   const [preview, setPreview] = useState<BookingFarePreview | null>(null);
+
+  // Return flight & preview (for round trips)
+  const [returnFlight, setReturnFlight] = useState<FlightInstanceDetail | null>(null);
+  const [returnPreview, setReturnPreview] = useState<BookingFarePreview | null>(null);
+
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,14 +68,20 @@ export const BookingReviewPage: React.FC = () => {
   const [adultCount, setAdultCount] = useState<number>(initialAdults);
   const [childCount, setChildCount] = useState<number>(initialChildren);
   const [cabinClass, setCabinClass] = useState<string>(cabinClassParam);
-  const [contactEmail, setContactEmail] = useState<string>(user?.email || 'customer@example.com');
-  const [contactPhone, setContactPhone] = useState<string>('9876543210');
+  const [contactEmail, setContactEmail] = useState<string>(user?.email || '');
+  const [contactPhone, setContactPhone] = useState<string>(user?.mobileNumber || '');
   const [passengers, setPassengers] = useState<FormPassenger[]>([]);
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
 
-  // Seat Selection State
+  // Outbound Seat Selection State
   const [isSeatModalOpen, setIsSeatModalOpen] = useState<boolean>(false);
   const [seatAssignments, setSeatAssignments] = useState<
+    Array<{ seatNumber?: string; seatPrice?: number }>
+  >([]);
+
+  // Return Seat Selection State
+  const [isReturnSeatModalOpen, setIsReturnSeatModalOpen] = useState<boolean>(false);
+  const [returnSeatAssignments, setReturnSeatAssignments] = useState<
     Array<{ seatNumber?: string; seatPrice?: number }>
   >([]);
 
@@ -73,14 +89,24 @@ export const BookingReviewPage: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [isBookingSubmitting, setIsBookingSubmitting] = useState<boolean>(false);
 
+  // Prepopulate email and phone from authenticated user
+  useEffect(() => {
+    if (user?.email && !contactEmail) {
+      setContactEmail(user.email);
+    }
+    if (user?.mobileNumber && !contactPhone) {
+      setContactPhone(user.mobileNumber);
+    }
+  }, [user]);
+
   // Initialize passenger list
   useEffect(() => {
     const list: FormPassenger[] = [];
     for (let i = 0; i < adultCount; i++) {
       list.push({
         title: 'Mr',
-        firstName: i === 0 && user ? user.username.split('_')[0] : '',
-        lastName: i === 0 && user ? (user.username.split('_')[1] || 'Passenger') : '',
+        firstName: i === 0 && user ? (user.name?.split(' ')[0] || user.username.split('_')[0]) : '',
+        lastName: i === 0 && user ? (user.name?.split(' ').slice(1).join(' ') || user.username.split('_')[1] || '') : '',
         type: 'ADULT',
         gender: 'MALE',
         age: 28,
@@ -110,7 +136,7 @@ export const BookingReviewPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [flightRes, previewRes] = await Promise.all([
+        const promises: Promise<any>[] = [
           flightApi.getInstanceById(instanceId, { adults: adultCount, children: childCount }),
           bookingApi.preview({
             flightInstanceId: instanceId,
@@ -118,16 +144,47 @@ export const BookingReviewPage: React.FC = () => {
             childCount,
             cabinClass,
           }),
-        ]);
+        ];
+
+        if (returnInstanceId) {
+          promises.push(
+            flightApi.getInstanceById(returnInstanceId, { adults: adultCount, children: childCount }),
+            bookingApi.preview({
+              flightInstanceId: returnInstanceId,
+              adultCount,
+              childCount,
+              cabinClass,
+            })
+          );
+        }
+
+        const results = await Promise.all(promises);
+        const flightRes = results[0];
+        const previewRes = results[1];
 
         if (flightRes.data.success && flightRes.data.flight) {
           setFlight(flightRes.data.flight);
         } else {
-          setError('Selected flight departure not found.');
+          setError('Selected outbound flight departure not found.');
         }
 
         if (previewRes.data.success && previewRes.data.preview) {
           setPreview(previewRes.data.preview);
+        }
+
+        if (returnInstanceId && results[2] && results[3]) {
+          const retFlightRes = results[2];
+          const retPreviewRes = results[3];
+
+          if (retFlightRes.data.success && retFlightRes.data.flight) {
+            setReturnFlight(retFlightRes.data.flight);
+          } else {
+            setError('Selected return flight departure not found.');
+          }
+
+          if (retPreviewRes.data.success && retPreviewRes.data.preview) {
+            setReturnPreview(retPreviewRes.data.preview);
+          }
         }
       } catch (err: any) {
         setError(err.response?.data?.error || 'Failed to retrieve flight details from the server.');
@@ -137,7 +194,7 @@ export const BookingReviewPage: React.FC = () => {
     };
 
     loadFlightData();
-  }, [instanceId, adultCount, childCount, cabinClass, navigate]);
+  }, [instanceId, returnInstanceId, adultCount, childCount, cabinClass, navigate]);
 
   const handlePassengerChange = (index: number, field: keyof FormPassenger, value: any) => {
     setPassengers((prev) => {
@@ -206,8 +263,20 @@ export const BookingReviewPage: React.FC = () => {
         seatPrice: seatAssignments[idx]?.seatPrice || 0,
       }));
 
+      const formattedReturnPassengers = isRoundTrip
+        ? passengers.map((p, idx) => ({
+            name: `${p.title} ${p.firstName.trim()} ${p.lastName.trim()}`.trim(),
+            type: p.type,
+            gender: p.gender,
+            age: p.age,
+            seatNumber: returnSeatAssignments[idx]?.seatNumber,
+            seatPrice: returnSeatAssignments[idx]?.seatPrice || 0,
+          }))
+        : undefined;
+
       const res = await bookingApi.create({
         flightInstanceId: flight.id,
+        returnFlightInstanceId: returnFlight ? returnFlight.id : undefined,
         adultCount,
         childCount,
         cabinClass,
@@ -215,6 +284,7 @@ export const BookingReviewPage: React.FC = () => {
         contactPhone,
         paymentMethod,
         passengers: formattedPassengers,
+        returnPassengers: formattedReturnPassengers,
       });
 
       if (res.data.success && res.data.booking) {
@@ -271,11 +341,21 @@ export const BookingReviewPage: React.FC = () => {
 
   if (!flight) return null;
 
-  const seatTotal = seatAssignments.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
-  const baseGrandTotal =
+  // Outbound Pricing
+  const outboundSeatTotal = seatAssignments.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
+  const outboundBaseGrandTotal =
     preview?.breakdown.grandTotal ||
     flight.adultFare * adultCount + flight.childFare * childCount + 350 * (adultCount + childCount);
-  const grandTotal = baseGrandTotal + seatTotal;
+
+  // Return Pricing (if round trip)
+  const returnSeatTotal = returnSeatAssignments.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
+  const returnBaseGrandTotal = returnFlight
+    ? returnPreview?.breakdown.grandTotal ||
+      returnFlight.adultFare * adultCount + returnFlight.childFare * childCount + 350 * (adultCount + childCount)
+    : 0;
+
+  const totalSeatCharges = outboundSeatTotal + returnSeatTotal;
+  const grandTotal = outboundBaseGrandTotal + returnBaseGrandTotal + totalSeatCharges;
 
   return (
     <div className="bg-slate-50 min-h-screen py-8">
@@ -314,7 +394,8 @@ export const BookingReviewPage: React.FC = () => {
             {/* STEP 1: Flight Itinerary & Policy Details */}
             {step === 1 && (
               <div className="space-y-6">
-                {/* Flight Card */}
+                
+                {/* Outbound Flight Card */}
                 <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-sm space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4">
                     <div className="flex items-center space-x-3.5">
@@ -326,6 +407,9 @@ export const BookingReviewPage: React.FC = () => {
                           <h2 className="text-xl font-black text-navy-950">{flight.flightCode}</h2>
                           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                             {flight.airlineName}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-slate-100 text-slate-600">
+                            {isRoundTrip ? 'Leg 1: Outbound' : 'One Way'}
                           </span>
                         </div>
                         <p className="text-xs font-medium text-slate-500 mt-0.5">
@@ -402,6 +486,72 @@ export const BookingReviewPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Return Flight Card (if round-trip) */}
+                {isRoundTrip && returnFlight && (
+                  <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-sm space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4">
+                      <div className="flex items-center space-x-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                          <Plane className="w-6 h-6 transform rotate-135" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h2 className="text-xl font-black text-navy-950">{returnFlight.flightCode}</h2>
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              {returnFlight.airlineName}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-indigo-100 text-indigo-800">
+                              Leg 2: Return
+                            </span>
+                          </div>
+                          <p className="text-xs font-medium text-slate-500 mt-0.5">
+                            {returnFlight.aircraft} &bull; {cabinClass.replace('_', ' ')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <span className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block">
+                          Return Travel Date
+                        </span>
+                        <span className="text-sm font-extrabold text-slate-800">{returnFlight.travelDate}</span>
+                      </div>
+                    </div>
+
+                    {/* Return Route & Times */}
+                    <div className="grid grid-cols-3 gap-4 bg-indigo-50/40 rounded-2xl p-6 text-center items-center border border-indigo-100/50">
+                      <div>
+                        <p className="text-2xl sm:text-3xl font-black text-slate-900">{returnFlight.departureTime}</p>
+                        <p className="text-xs font-bold text-slate-600 uppercase mt-1">
+                          {returnFlight.origin.match(/\(([^)]+)\)/)?.[1] || returnFlight.origin}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">{returnFlight.origin}</p>
+                      </div>
+
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs font-semibold text-slate-500 mb-1">{returnFlight.duration}</span>
+                        <div className="w-24 sm:w-36 flex items-center my-1">
+                          <div className="w-2 h-2 rounded-full border border-indigo-600 bg-white"></div>
+                          <div className="flex-1 border-t-2 border-dashed border-indigo-300"></div>
+                          <Plane className="w-3.5 h-3.5 text-indigo-600 transform rotate-90 mx-1" />
+                          <div className="flex-1 border-t-2 border-dashed border-indigo-300"></div>
+                          <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+                        </div>
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
+                          Direct Non-Stop
+                        </span>
+                      </div>
+
+                      <div>
+                        <p className="text-2xl sm:text-3xl font-black text-slate-900">{returnFlight.arrivalTime}</p>
+                        <p className="text-xs font-bold text-slate-600 uppercase mt-1">
+                          {returnFlight.destination.match(/\(([^)]+)\)/)?.[1] || returnFlight.destination}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">{returnFlight.destination}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* MakeMyTrip-Style Policy Tabs */}
                 <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
                   <div className="flex border-b border-slate-100 space-x-4">
@@ -452,7 +602,7 @@ export const BookingReviewPage: React.FC = () => {
                           <span className="font-bold text-slate-900">{flight.baggage.checkIn}</span>
                         </div>
                         <p className="text-[11px] text-slate-400">
-                          * Infants are allowed 1 piece of cabin baggage up to 7 kg. Excess baggage can be purchased at airport check-in.
+                          * Applicable per passenger per flight leg. Excess baggage can be purchased at airport check-in counters.
                         </p>
                       </div>
                     )}
@@ -537,22 +687,21 @@ export const BookingReviewPage: React.FC = () => {
                             <span>{p.type === 'ADULT' ? 'Adult Passenger (Age 12+)' : 'Child Passenger (Age 2-11)'}</span>
                           </span>
 
-                          {seatAssignments[idx]?.seatNumber ? (
-                            <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold">
-                              <span>Seat {seatAssignments[idx]?.seatNumber}</span>
-                              <span className="text-[10px] text-emerald-600 font-medium">
-                                ({seatAssignments[idx]?.seatPrice ? `+₹${seatAssignments[idx]?.seatPrice}` : 'Free'})
+                          <div className="flex items-center space-x-2">
+                            {/* Outbound Seat status */}
+                            {seatAssignments[idx]?.seatNumber ? (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md text-[11px] font-bold">
+                                <span>Out: {seatAssignments[idx]?.seatNumber}</span>
                               </span>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setIsSeatModalOpen(true)}
-                              className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline"
-                            >
-                              + Choose Seat
-                            </button>
-                          )}
+                            ) : null}
+
+                            {/* Return Seat status */}
+                            {isRoundTrip && returnSeatAssignments[idx]?.seatNumber ? (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-md text-[11px] font-bold">
+                                <span>Ret: {returnSeatAssignments[idx]?.seatNumber}</span>
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -631,7 +780,7 @@ export const BookingReviewPage: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Visual Aircraft Seat Selection Banner */}
+                  {/* Seat Selection Banner 1: Outbound Leg */}
                   <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50 rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center space-x-3.5">
                       <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 flex-shrink-0">
@@ -639,10 +788,10 @@ export const BookingReviewPage: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="font-extrabold text-navy-950 text-sm">
-                          Interactive Aircraft Seat Map (3-3 Layout)
+                          {isRoundTrip ? `Outbound Flight Seats: ${flight.flightCode}` : 'Interactive Aircraft Seat Map (3-3 Layout)'}
                         </h4>
                         <p className="text-xs text-slate-600 mt-0.5">
-                          Pick your preferred seats: Window, Aisle, Extra Legroom (Row 13), Emergency Exit (Row 12), or Business.
+                          Pick preferred seats: Window, Aisle, Extra Legroom (Row 13), Emergency Exit (Row 12), or Business.
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
                           {passengers.map((p, idx) => {
@@ -669,9 +818,53 @@ export const BookingReviewPage: React.FC = () => {
                       className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-2 whitespace-nowrap"
                     >
                       <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Select Seats on Map</span>
+                      <span>{isRoundTrip ? 'Select Outbound Seats' : 'Select Seats on Map'}</span>
                     </button>
                   </div>
+
+                  {/* Seat Selection Banner 2: Return Leg (if Round Trip) */}
+                  {isRoundTrip && returnFlight && (
+                    <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 rounded-2xl border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center space-x-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 flex-shrink-0">
+                          <Plane className="w-6 h-6 transform rotate-135" />
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-navy-950 text-sm">
+                            Return Flight Seats: {returnFlight.flightCode}
+                          </h4>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Select your seats for the journey back: {returnFlight.origin} &rarr; {returnFlight.destination}.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            {passengers.map((p, idx) => {
+                              const seat = returnSeatAssignments[idx];
+                              return (
+                                <span
+                                  key={idx}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    seat?.seatNumber
+                                      ? 'bg-indigo-600 text-white shadow-xs'
+                                      : 'bg-white border border-slate-300 text-slate-600'
+                                  }`}
+                                >
+                                  Pax {idx + 1}: {seat?.seatNumber ? `${seat.seatNumber} (+₹${seat.seatPrice})` : 'Auto-Assign'}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsReturnSeatModalOpen(true)}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-2 whitespace-nowrap"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>Select Return Seats</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Contact Information */}
                   <div className="pt-4 border-t border-slate-100 space-y-3">
@@ -688,6 +881,7 @@ export const BookingReviewPage: React.FC = () => {
                           <input
                             type="email"
                             required
+                            placeholder="your.email@example.com"
                             value={contactEmail}
                             onChange={(e) => setContactEmail(e.target.value)}
                             className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:bg-white transition"
@@ -703,7 +897,7 @@ export const BookingReviewPage: React.FC = () => {
                           <input
                             type="tel"
                             required
-                            placeholder="9876543210"
+                            placeholder="10-digit mobile number"
                             value={contactPhone}
                             onChange={(e) => setContactPhone(e.target.value)}
                             className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:bg-white transition"
@@ -744,16 +938,23 @@ export const BookingReviewPage: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Flight Summary Box */}
+                  {/* Outbound Flight Summary Box */}
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center space-x-3">
                       <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white">
                         <Plane className="w-4 h-4 transform -rotate-45" />
                       </div>
                       <div>
-                        <p className="font-extrabold text-navy-950 text-sm">
-                          {flight.flightCode} &bull; {flight.origin} &rarr; {flight.destination}
-                        </p>
+                        <div className="flex items-center space-x-2">
+                          <p className="font-extrabold text-navy-950 text-sm">
+                            {flight.flightCode} &bull; {flight.origin} &rarr; {flight.destination}
+                          </p>
+                          {isRoundTrip && (
+                            <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.2 rounded">
+                              Outbound
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500">
                           {flight.travelDate} &bull; {flight.departureTime} &rarr; {flight.arrivalTime} ({flight.duration})
                         </p>
@@ -763,6 +964,33 @@ export const BookingReviewPage: React.FC = () => {
                       {cabinClass.replace('_', ' ')}
                     </span>
                   </div>
+
+                  {/* Return Flight Summary Box (if round-trip) */}
+                  {isRoundTrip && returnFlight && (
+                    <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
+                          <Plane className="w-4 h-4 transform rotate-135" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <p className="font-extrabold text-navy-950 text-sm">
+                              {returnFlight.flightCode} &bull; {returnFlight.origin} &rarr; {returnFlight.destination}
+                            </p>
+                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.2 rounded">
+                              Return
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {returnFlight.travelDate} &bull; {returnFlight.departureTime} &rarr; {returnFlight.arrivalTime} ({returnFlight.duration})
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-indigo-900 bg-white px-3 py-1.5 rounded-xl border border-indigo-200">
+                        {cabinClass.replace('_', ' ')}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Verified Passengers Table */}
                   <div className="space-y-2">
@@ -777,7 +1005,8 @@ export const BookingReviewPage: React.FC = () => {
                             <th className="py-2.5 px-3">Name</th>
                             <th className="py-2.5 px-3">Category</th>
                             <th className="py-2.5 px-3">Gender</th>
-                            <th className="py-2.5 px-3">Assigned Seat</th>
+                            <th className="py-2.5 px-3">Outbound Seat</th>
+                            {isRoundTrip && <th className="py-2.5 px-3">Return Seat</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -789,6 +1018,8 @@ export const BookingReviewPage: React.FC = () => {
                               </td>
                               <td className="py-2.5 px-3 text-slate-600">{p.type}</td>
                               <td className="py-2.5 px-3 text-slate-600">{p.gender}</td>
+                              
+                              {/* Outbound assigned seat */}
                               <td className="py-2.5 px-3">
                                 {seatAssignments[idx]?.seatNumber ? (
                                   <span className="font-bold text-blue-600">
@@ -801,6 +1032,22 @@ export const BookingReviewPage: React.FC = () => {
                                   <span className="text-slate-400 italic">Auto-Assigned</span>
                                 )}
                               </td>
+
+                              {/* Return assigned seat */}
+                              {isRoundTrip && (
+                                <td className="py-2.5 px-3">
+                                  {returnSeatAssignments[idx]?.seatNumber ? (
+                                    <span className="font-bold text-indigo-600">
+                                      {returnSeatAssignments[idx]?.seatNumber}
+                                      <span className="text-[10px] text-slate-500 ml-1 font-normal">
+                                        ({returnSeatAssignments[idx]?.seatPrice ? `+₹${returnSeatAssignments[idx]?.seatPrice}` : 'Free'})
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">Auto-Assigned</span>
+                                  )}
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -851,51 +1098,64 @@ export const BookingReviewPage: React.FC = () => {
           {/* Right Column: MakeMyTrip Fare Breakdown Card (4 cols) */}
           <div className="lg:col-span-4 space-y-4 sticky top-24">
             <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
-              <h3 className="font-extrabold text-navy-950 text-base border-b border-slate-100 pb-3">
-                Fare Breakdown
+              <h3 className="font-extrabold text-navy-950 text-base border-b border-slate-100 pb-3 flex items-center justify-between">
+                <span>Fare Breakdown</span>
+                {isRoundTrip && (
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full uppercase">
+                    Round Trip
+                  </span>
+                )}
               </h3>
 
               <div className="space-y-2.5 text-xs text-slate-600">
-                <div className="flex justify-between py-1">
-                  <span>
-                    Adult Fare ({adultCount} &times; ₹{preview?.breakdown.baseAdultFare.toLocaleString('en-IN') || flight.adultFare.toLocaleString('en-IN')})
-                  </span>
-                  <span className="font-bold text-slate-900">
-                    ₹{(preview?.breakdown.adultSubtotal || flight.adultFare * adultCount).toLocaleString('en-IN')}
-                  </span>
-                </div>
-
-                {childCount > 0 && (
-                  <div className="flex justify-between py-1">
+                {/* Outbound Leg Subtotal */}
+                <div>
+                  <div className="flex justify-between py-1 font-semibold text-slate-800">
                     <span>
-                      Child Fare ({childCount} &times; ₹{preview?.breakdown.baseChildFare.toLocaleString('en-IN') || flight.childFare.toLocaleString('en-IN')})
+                      {isRoundTrip ? 'Outbound Airfare' : `Base Fare (${adultCount} Ad${childCount > 0 ? `, ${childCount} Ch` : ''})`}
                     </span>
                     <span className="font-bold text-slate-900">
-                      ₹{(preview?.breakdown.childSubtotal || flight.childFare * childCount).toLocaleString('en-IN')}
+                      ₹{((preview?.breakdown.baseTotal || flight.adultFare * adultCount + flight.childFare * childCount)).toLocaleString('en-IN')}
                     </span>
+                  </div>
+                  <div className="flex justify-between py-0.5 text-slate-400 text-[11px]">
+                    <span>Taxes & Airport Development Fee</span>
+                    <span>₹{(preview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                {/* Return Leg Subtotal (if round trip) */}
+                {isRoundTrip && returnFlight && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="flex justify-between py-1 font-semibold text-indigo-900">
+                      <span>Return Airfare</span>
+                      <span className="font-bold text-slate-900">
+                        ₹{((returnPreview?.breakdown.baseTotal || returnFlight.adultFare * adultCount + returnFlight.childFare * childCount)).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-0.5 text-slate-400 text-[11px]">
+                      <span>Taxes & Airport Development Fee</span>
+                      <span>₹{(returnPreview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
                 )}
 
-                <div className="flex justify-between py-1 text-slate-500">
-                  <span>Aviation Security Fee & Taxes</span>
-                  <span className="font-semibold text-slate-800">
-                    ₹{(preview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}
-                  </span>
-                </div>
-
-                {seatTotal > 0 && (
-                  <div className="flex justify-between py-1 text-blue-600">
+                {/* Seat Charges */}
+                {totalSeatCharges > 0 && (
+                  <div className="pt-2 border-t border-slate-100 flex justify-between py-1 text-blue-600">
                     <span className="font-medium">
-                      Seat Selection ({seatAssignments.filter((s) => s.seatNumber).length} seats)
+                      Seat Selection Charges
                     </span>
-                    <span className="font-bold">+₹{seatTotal.toLocaleString('en-IN')}</span>
+                    <span className="font-bold">+₹{totalSeatCharges.toLocaleString('en-IN')}</span>
                   </div>
                 )}
 
                 <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
                   <div>
                     <span className="text-sm font-black text-navy-950">Grand Total</span>
-                    <p className="text-[10px] text-slate-400">All fees & seat selection included</p>
+                    <p className="text-[10px] text-slate-400">
+                      {isRoundTrip ? 'Both flight legs, taxes & seats' : 'All taxes & seat selection included'}
+                    </p>
                   </div>
                   <span className="text-2xl font-black text-blue-600">
                     ₹{grandTotal.toLocaleString('en-IN')}
@@ -917,7 +1177,7 @@ export const BookingReviewPage: React.FC = () => {
 
       </div>
 
-      {/* Interactive Top-Down Aircraft Seat Selection Modal */}
+      {/* Outbound Top-Down Aircraft Seat Selection Modal */}
       {isSeatModalOpen && flight && (
         <SeatSelectionMap
           flightInstanceId={flight.id}
@@ -934,14 +1194,35 @@ export const BookingReviewPage: React.FC = () => {
         />
       )}
 
+      {/* Return Top-Down Aircraft Seat Selection Modal (if round-trip) */}
+      {isReturnSeatModalOpen && returnFlight && (
+        <SeatSelectionMap
+          flightInstanceId={returnFlight.id}
+          passengers={passengers.map((p) => ({
+            name: `${p.title} ${p.firstName} ${p.lastName}`.trim(),
+            type: p.type,
+          }))}
+          currentAssignments={returnSeatAssignments}
+          onConfirmSeats={(assignments) => {
+            setReturnSeatAssignments(assignments);
+            setIsReturnSeatModalOpen(false);
+          }}
+          onClose={() => setIsReturnSeatModalOpen(false)}
+        />
+      )}
+
       {/* MakeMyTrip-Style Interactive Payment Gateway Modal with Google Pay QR */}
       <PaymentGatewayModal
         isOpen={isPaymentModalOpen}
         amount={grandTotal}
         bookingSummary={{
-          flightCode: flight.flightCode,
-          route: `${flight.origin} → ${flight.destination}`,
-          travelDate: flight.travelDate,
+          flightCode: isRoundTrip && returnFlight ? `${flight.flightCode} + ${returnFlight.flightCode}` : flight.flightCode,
+          route: isRoundTrip && returnFlight
+            ? `${flight.origin} ⇄ ${flight.destination}`
+            : `${flight.origin} → ${flight.destination}`,
+          travelDate: isRoundTrip && returnFlight
+            ? `${flight.travelDate} to ${returnFlight.travelDate}`
+            : flight.travelDate,
           passengersCount: passengers.length,
         }}
         onClose={() => setIsPaymentModalOpen(false)}

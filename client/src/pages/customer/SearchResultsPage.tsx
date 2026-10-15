@@ -14,6 +14,8 @@ import {
   ShieldCheck,
   Check,
   Info,
+  Calendar,
+  Sparkles,
 } from 'lucide-react';
 import { flightApi } from '../../services/api';
 import { SearchFlightResult } from '../../types';
@@ -23,18 +25,35 @@ export const SearchResultsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
+  const tripTypeParam = searchParams.get('tripType');
+  const returnDateParam = searchParams.get('returnDate');
+  const tripType: 'oneway' | 'roundtrip' =
+    tripTypeParam === 'roundtrip' || returnDateParam ? 'roundtrip' : 'oneway';
+
   const origin = searchParams.get('origin') || 'Bangalore (BLR)';
   const destination = searchParams.get('destination') || 'Delhi (DEL)';
   const travelDate =
     searchParams.get('travelDate') ||
     new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const returnDate =
+    returnDateParam ||
+    new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10);
   const adults = Number(searchParams.get('adults')) || 1;
   const children = Number(searchParams.get('children')) || 0;
   const cabinClass = searchParams.get('class') || 'ECONOMY';
 
-  const [rawFlights, setRawFlights] = useState<SearchFlightResult[]>([]);
+  // Active leg for round trip: 'outbound' or 'return'
+  const [activeLeg, setActiveLeg] = useState<'outbound' | 'return'>('outbound');
+
+  // Flight results state
+  const [rawOutboundFlights, setRawOutboundFlights] = useState<SearchFlightResult[]>([]);
+  const [rawReturnFlights, setRawReturnFlights] = useState<SearchFlightResult[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Selected flights for Round Trip
+  const [selectedOutbound, setSelectedOutbound] = useState<SearchFlightResult | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<SearchFlightResult | null>(null);
 
   // Sorting & Filtering State
   const [sortBy, setSortBy] = useState<'cheapest' | 'earliest' | 'fastest'>('cheapest');
@@ -43,9 +62,11 @@ export const SearchResultsPage: React.FC = () => {
 
   // Modify search drawer state
   const [isModifying, setIsModifying] = useState<boolean>(false);
+  const [modTripType, setModTripType] = useState<'oneway' | 'roundtrip'>(tripType);
   const [modOrigin, setModOrigin] = useState(origin);
   const [modDestination, setModDestination] = useState(destination);
   const [modDate, setModDate] = useState(travelDate);
+  const [modReturnDate, setModReturnDate] = useState(returnDate);
   const [modAdults, setModAdults] = useState(adults);
   const [modChildren, setModChildren] = useState(children);
 
@@ -54,15 +75,53 @@ export const SearchResultsPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await flightApi.search({
-          origin,
-          destination,
-          travelDate,
-          adults,
-          children,
-        });
-        if (res.data.success) {
-          setRawFlights(res.data.flights);
+        if (tripType === 'roundtrip') {
+          // Fetch both outbound and return flights independently
+          const [outboundRes, returnRes] = await Promise.all([
+            flightApi.search({
+              origin,
+              destination,
+              travelDate,
+              adults,
+              children,
+              tripType: 'roundtrip',
+              returnDate,
+            }),
+            flightApi.search({
+              origin: destination,
+              destination: origin,
+              travelDate: returnDate,
+              adults,
+              children,
+              tripType: 'oneway',
+            }),
+          ]);
+
+          if (outboundRes.data.success) {
+            setRawOutboundFlights(outboundRes.data.flights);
+            if (outboundRes.data.flights.length > 0 && !selectedOutbound) {
+              setSelectedOutbound(outboundRes.data.flights[0]);
+            }
+          }
+          if (returnRes.data.success) {
+            setRawReturnFlights(returnRes.data.flights);
+            if (returnRes.data.flights.length > 0 && !selectedReturn) {
+              setSelectedReturn(returnRes.data.flights[0]);
+            }
+          }
+        } else {
+          // One-way search
+          const res = await flightApi.search({
+            origin,
+            destination,
+            travelDate,
+            adults,
+            children,
+            tripType: 'oneway',
+          });
+          if (res.data.success) {
+            setRawOutboundFlights(res.data.flights);
+          }
         }
       } catch (err: any) {
         setError(err.response?.data?.error || 'Failed to search flights. Please try again.');
@@ -72,7 +131,7 @@ export const SearchResultsPage: React.FC = () => {
     };
 
     fetchSearchResults();
-  }, [origin, destination, travelDate, adults, children]);
+  }, [origin, destination, travelDate, returnDate, adults, children, tripType]);
 
   const handleApplyModifiedSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,20 +139,60 @@ export const SearchResultsPage: React.FC = () => {
       setError('Origin and destination must be different.');
       return;
     }
-    setSearchParams({
+    if (modTripType === 'roundtrip' && modReturnDate < modDate) {
+      setError('Return date cannot be earlier than departure date.');
+      return;
+    }
+
+    const nextParams: Record<string, string> = {
+      tripType: modTripType,
       origin: modOrigin,
       destination: modDestination,
       travelDate: modDate,
       adults: modAdults.toString(),
       children: modChildren.toString(),
       class: cabinClass,
-    });
+    };
+    if (modTripType === 'roundtrip') {
+      nextParams.returnDate = modReturnDate;
+    }
+
+    setSearchParams(nextParams);
     setIsModifying(false);
   };
 
   const handleSelectFlight = (flight: SearchFlightResult) => {
+    if (tripType === 'oneway') {
+      navigate(
+        `/booking/review?instanceId=${flight.id}&adults=${adults}&children=${children}&date=${travelDate}&class=${cabinClass}`
+      );
+    } else {
+      // Round trip leg selection
+      if (activeLeg === 'outbound') {
+        setSelectedOutbound(flight);
+        if (!selectedReturn) {
+          setActiveLeg('return');
+        }
+      } else {
+        setSelectedReturn(flight);
+      }
+    }
+  };
+
+  const handleProceedRoundTripBooking = () => {
+    if (!selectedOutbound) {
+      setActiveLeg('outbound');
+      setError('Please select an outbound flight to continue.');
+      return;
+    }
+    if (!selectedReturn) {
+      setActiveLeg('return');
+      setError('Please select a return flight to continue.');
+      return;
+    }
+
     navigate(
-      `/booking/review?instanceId=${flight.id}&adults=${adults}&children=${children}&date=${travelDate}&class=${cabinClass}`
+      `/booking/review?instanceId=${selectedOutbound.id}&returnInstanceId=${selectedReturn.id}&adults=${adults}&children=${children}&date=${travelDate}&returnDate=${returnDate}&class=${cabinClass}`
     );
   };
 
@@ -112,8 +211,17 @@ export const SearchResultsPage: React.FC = () => {
     }
   };
 
+  // Determine current flight list based on active leg
+  const currentFlights = tripType === 'roundtrip' && activeLeg === 'return'
+    ? rawReturnFlights
+    : rawOutboundFlights;
+
+  const currentLegOrigin = tripType === 'roundtrip' && activeLeg === 'return' ? destination : origin;
+  const currentLegDestination = tripType === 'roundtrip' && activeLeg === 'return' ? origin : destination;
+  const currentLegDate = tripType === 'roundtrip' && activeLeg === 'return' ? returnDate : travelDate;
+
   // Filter & Sort Flights
-  const filteredFlights = rawFlights.filter((flight) => {
+  const filteredFlights = currentFlights.filter((flight) => {
     if (timeFilter === 'all') return true;
     const hour = parseInt(flight.departureTime.split(':')[0], 10);
     if (timeFilter === 'morning') return hour >= 4 && hour < 12;
@@ -136,8 +244,11 @@ export const SearchResultsPage: React.FC = () => {
     return 0;
   });
 
+  const totalRoundTripFare =
+    (selectedOutbound?.totalFare || 0) + (selectedReturn?.totalFare || 0);
+
   return (
-    <div className="bg-slate-50 min-h-screen py-8">
+    <div className={`bg-slate-50 min-h-screen py-8 ${tripType === 'roundtrip' ? 'pb-28' : ''}`}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Search Summary Header */}
@@ -146,11 +257,21 @@ export const SearchResultsPage: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2.5 text-xl sm:text-2xl font-black text-navy-950">
                 <span>{origin}</span>
-                <ArrowRight className="w-5 h-5 text-blue-600" />
+                {tripType === 'roundtrip' ? (
+                  <RefreshCw className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <ArrowRight className="w-5 h-5 text-blue-600" />
+                )}
                 <span>{destination}</span>
+                {tripType === 'roundtrip' && (
+                  <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-2">
+                    Round Trip
+                  </span>
+                )}
               </div>
               <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
-                {formatDateDisplay(travelDate)} &bull; {adults} Adult{adults > 1 ? 's' : ''}
+                {formatDateDisplay(travelDate)}
+                {tripType === 'roundtrip' ? ` — ${formatDateDisplay(returnDate)}` : ''} &bull; {adults} Adult{adults > 1 ? 's' : ''}
                 {children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''} &bull;{' '}
                 <span className="text-blue-600 font-semibold">{cabinClass.replace('_', ' ')}</span>
               </p>
@@ -169,7 +290,28 @@ export const SearchResultsPage: React.FC = () => {
           {/* Collapsible Modify Form */}
           {isModifying && (
             <form onSubmit={handleApplyModifiedSearch} className="mt-6 pt-6 border-t border-slate-100">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex space-x-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setModTripType('oneway')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    modTripType === 'oneway' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  One Way
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModTripType('roundtrip')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    modTripType === 'roundtrip' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  Round Trip
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">From</label>
                   <input
@@ -191,7 +333,7 @@ export const SearchResultsPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Date</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Departure</label>
                   <input
                     type="date"
                     value={modDate}
@@ -201,9 +343,22 @@ export const SearchResultsPage: React.FC = () => {
                     required
                   />
                 </div>
+                {modTripType === 'roundtrip' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Return</label>
+                    <input
+                      type="date"
+                      value={modReturnDate}
+                      min={modDate}
+                      onChange={(e) => setModReturnDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Passengers</label>
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-1">
                     <select
                       value={modAdults}
                       onChange={(e) => setModAdults(Number(e.target.value))}
@@ -244,25 +399,133 @@ export const SearchResultsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Low-Fare Date Carousel / Matrix */}
+        {/* Round Trip Leg Switcher Tabs (MakeMyTrip Style) */}
+        {tripType === 'roundtrip' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {/* Outbound Leg Card */}
+            <div
+              onClick={() => setActiveLeg('outbound')}
+              className={`p-4 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between ${
+                activeLeg === 'outbound'
+                  ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-2 ring-blue-200'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center space-x-3">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-white ${
+                    activeLeg === 'outbound' ? 'bg-blue-600' : 'bg-slate-400'
+                  }`}
+                >
+                  <Plane className="w-5 h-5 transform -rotate-45" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                    1. Outbound Flight
+                  </span>
+                  <p className="text-sm font-black text-navy-950">
+                    {origin.match(/\(([^)]+)\)/)?.[1] || origin} &rarr; {destination.match(/\(([^)]+)\)/)?.[1] || destination}
+                  </p>
+                  <p className="text-[11px] text-slate-500">{formatDateDisplay(travelDate)}</p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                {selectedOutbound ? (
+                  <div>
+                    <span className="inline-block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full mb-0.5">
+                      {selectedOutbound.flightCode}
+                    </span>
+                    <p className="text-xs font-black text-slate-900">
+                      ₹{selectedOutbound.adultFare.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                ) : (
+                  <span className="text-xs text-blue-600 font-bold">Select Flight</span>
+                )}
+              </div>
+            </div>
+
+            {/* Return Leg Card */}
+            <div
+              onClick={() => setActiveLeg('return')}
+              className={`p-4 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between ${
+                activeLeg === 'return'
+                  ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-2 ring-blue-200'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center space-x-3">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-white ${
+                    activeLeg === 'return' ? 'bg-blue-600' : 'bg-slate-400'
+                  }`}
+                >
+                  <Plane className="w-5 h-5 transform rotate-135" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">
+                    2. Return Flight
+                  </span>
+                  <p className="text-sm font-black text-navy-950">
+                    {destination.match(/\(([^)]+)\)/)?.[1] || destination} &rarr; {origin.match(/\(([^)]+)\)/)?.[1] || origin}
+                  </p>
+                  <p className="text-[11px] text-slate-500">{formatDateDisplay(returnDate)}</p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                {selectedReturn ? (
+                  <div>
+                    <span className="inline-block text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full mb-0.5">
+                      {selectedReturn.flightCode}
+                    </span>
+                    <p className="text-xs font-black text-slate-900">
+                      ₹{selectedReturn.adultFare.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                ) : (
+                  <span className="text-xs text-blue-600 font-bold">Select Flight</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Low-Fare Date Carousel / Matrix for current leg */}
         <LowFareCalendarBar
-          origin={origin}
-          destination={destination}
-          selectedDate={travelDate}
+          origin={currentLegOrigin}
+          destination={currentLegDestination}
+          selectedDate={currentLegDate}
           onSelectDate={(newDate) => {
-            setSearchParams({
-              origin,
-              destination,
-              travelDate: newDate,
-              adults: adults.toString(),
-              children: children.toString(),
-              class: cabinClass,
-            });
+            if (tripType === 'roundtrip' && activeLeg === 'return') {
+              setSearchParams({
+                tripType,
+                origin,
+                destination,
+                travelDate,
+                returnDate: newDate,
+                adults: adults.toString(),
+                children: children.toString(),
+                class: cabinClass,
+              });
+            } else {
+              setSearchParams({
+                tripType,
+                origin,
+                destination,
+                travelDate: newDate,
+                returnDate,
+                adults: adults.toString(),
+                children: children.toString(),
+                class: cabinClass,
+              });
+            }
           }}
         />
 
-        {/* MakeMyTrip-Style Filter & Sorting Bar */}
-        {!isLoading && rawFlights.length > 0 && (
+        {/* Filter & Sorting Bar */}
+        {!isLoading && currentFlights.length > 0 && (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             {/* Sorting Tabs */}
             <div className="flex items-center space-x-2 text-xs font-semibold">
@@ -356,7 +619,7 @@ export const SearchResultsPage: React.FC = () => {
 
         {/* Error State */}
         {!isLoading && error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 p-6 rounded-3xl flex items-center space-x-3">
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 p-6 rounded-3xl flex items-center space-x-3 mb-6">
             <AlertCircle className="w-6 h-6 flex-shrink-0" />
             <p className="text-sm font-medium">{error}</p>
           </div>
@@ -368,9 +631,9 @@ export const SearchResultsPage: React.FC = () => {
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <Plane className="w-8 h-8 transform -rotate-45" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">No Flights Matching Filters</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">No Flights Found for This Leg</h3>
             <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
-              We couldn't find any flights for the selected departure time or passenger capacity. Try clearing your filters or choosing another date.
+              We couldn't find any flights for {currentLegOrigin} &rarr; {currentLegDestination} on {formatDateDisplay(currentLegDate)}. Try choosing an adjacent date or clearing filters.
             </p>
             <button
               onClick={() => {
@@ -379,7 +642,7 @@ export const SearchResultsPage: React.FC = () => {
               }}
               className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm"
             >
-              Reset Filters & Dates
+              Modify Dates & Route
             </button>
           </div>
         )}
@@ -388,17 +651,30 @@ export const SearchResultsPage: React.FC = () => {
         {!isLoading && !error && sortedFlights.length > 0 && (
           <div className="space-y-4">
             <div className="flex justify-between items-center text-xs font-semibold text-slate-500 px-1">
-              <span>Showing {sortedFlights.length} flight{sortedFlights.length > 1 ? 's' : ''}</span>
+              <span>
+                Showing {sortedFlights.length} flight{sortedFlights.length > 1 ? 's' : ''} for{' '}
+                <strong className="text-slate-800">
+                  {currentLegOrigin.match(/\(([^)]+)\)/)?.[1] || currentLegOrigin} &rarr;{' '}
+                  {currentLegDestination.match(/\(([^)]+)\)/)?.[1] || currentLegDestination}
+                </strong>
+              </span>
               <span className="text-emerald-700">All prices include base fare, taxes, and baggage</span>
             </div>
 
             {sortedFlights.map((flight) => {
               const isExpanded = expandedFlightId === flight.id;
+              const isSelected =
+                (tripType === 'roundtrip' && activeLeg === 'outbound' && selectedOutbound?.id === flight.id) ||
+                (tripType === 'roundtrip' && activeLeg === 'return' && selectedReturn?.id === flight.id);
 
               return (
                 <div
                   key={flight.id}
-                  className="bg-white rounded-3xl border border-slate-200 hover:border-blue-400 p-6 shadow-sm hover:shadow-md transition-all space-y-4"
+                  className={`bg-white rounded-3xl border transition-all space-y-4 p-6 shadow-sm ${
+                    isSelected
+                      ? 'border-blue-600 ring-2 ring-blue-100 shadow-md bg-blue-50/10'
+                      : 'border-slate-200 hover:border-blue-400 hover:shadow-md'
+                  }`}
                 >
                   <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                     {/* Airline & Code */}
@@ -477,14 +753,18 @@ export const SearchResultsPage: React.FC = () => {
 
                       <button
                         onClick={() => handleSelectFlight(flight)}
-                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-600/20 transition active:scale-95"
+                        className={`px-6 py-2.5 font-bold text-xs sm:text-sm rounded-xl shadow-md transition active:scale-95 ${
+                          isSelected
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20'
+                        }`}
                       >
-                        Select Flight
+                        {isSelected ? '✓ Selected' : tripType === 'roundtrip' ? 'Select Leg' : 'Select Flight'}
                       </button>
                     </div>
                   </div>
 
-                  {/* MakeMyTrip-Style Flight Card Footer */}
+                  {/* Flight Card Footer */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                     <div className="flex items-center space-x-3">
                       <span className="inline-flex items-center space-x-1 text-slate-600">
@@ -542,6 +822,84 @@ export const SearchResultsPage: React.FC = () => {
         )}
 
       </div>
+
+      {/* MakeMyTrip-Style Sticky Bottom Bar for Round Trip */}
+      {tripType === 'roundtrip' && (
+        <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200/90 shadow-2xl py-3 px-4 z-40">
+          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            
+            {/* Outbound & Return Summary Chips */}
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 w-full sm:w-auto">
+              {/* Outbound chip */}
+              <div
+                onClick={() => setActiveLeg('outbound')}
+                className="cursor-pointer flex items-center space-x-2 text-xs"
+              >
+                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                  1
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Outbound</span>
+                  {selectedOutbound ? (
+                    <span className="font-bold text-slate-800">
+                      {selectedOutbound.flightCode} &bull; {selectedOutbound.departureTime} (₹{selectedOutbound.adultFare})
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 font-bold">Select Flight</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="hidden sm:block text-slate-300 font-bold">+</div>
+
+              {/* Return chip */}
+              <div
+                onClick={() => setActiveLeg('return')}
+                className="cursor-pointer flex items-center space-x-2 text-xs"
+              >
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  2
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Return</span>
+                  {selectedReturn ? (
+                    <span className="font-bold text-slate-800">
+                      {selectedReturn.flightCode} &bull; {selectedReturn.departureTime} (₹{selectedReturn.adultFare})
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 font-bold">Select Flight</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Price and CTA */}
+            <div className="flex items-center justify-between sm:justify-end space-x-4 w-full sm:w-auto">
+              <div className="text-left sm:text-right">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Combined Total</span>
+                <span className="text-xl sm:text-2xl font-black text-blue-600">
+                  ₹{totalRoundTripFare.toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <button
+                onClick={handleProceedRoundTripBooking}
+                disabled={!selectedOutbound || !selectedReturn}
+                className={`px-6 py-3 rounded-xl font-bold text-xs sm:text-sm shadow-lg flex items-center space-x-2 transition ${
+                  selectedOutbound && selectedReturn
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30 active:scale-95'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
+              >
+                <span>Continue to Booking</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

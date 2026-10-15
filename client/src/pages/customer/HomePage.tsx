@@ -1,7 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plane, Calendar, Users, ArrowRight, ShieldCheck, Tag, Headphones, RefreshCw } from 'lucide-react';
+import { Plane, Calendar, Users, ArrowRight, ShieldCheck, Tag, Headphones, RefreshCw, MapPin, Sparkles } from 'lucide-react';
 import { flightApi } from '../../services/api';
+
+const POPULAR_DESTINATIONS = [
+  {
+    city: 'Goa (GOI)',
+    title: 'Goa',
+    tagline: 'Sun, Sand & Tropical Beaches',
+    image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹2,999',
+  },
+  {
+    city: 'Delhi (DEL)',
+    title: 'New Delhi',
+    tagline: 'Capital Heritage & Historic Monuments',
+    image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹3,499',
+  },
+  {
+    city: 'Mumbai (BOM)',
+    title: 'Mumbai',
+    tagline: 'City of Dreams & Coastal Gateway',
+    image: 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹3,299',
+  },
+  {
+    city: 'Bangalore (BLR)',
+    title: 'Bengaluru',
+    tagline: 'Silicon Valley & Vibrant Gardens',
+    image: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹2,799',
+  },
+  {
+    city: 'Chennai (MAA)',
+    title: 'Chennai',
+    tagline: 'Cultural Capital of South India',
+    image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹2,699',
+  },
+  {
+    city: 'Hyderabad (HYD)',
+    title: 'Hyderabad',
+    tagline: 'Historic Charminar & Culinary Hub',
+    image: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?q=80&w=800&auto=format&fit=crop',
+    startingFare: '₹2,899',
+  },
+];
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,11 +61,17 @@ export const HomePage: React.FC = () => {
     tomorrow.toISOString().slice(0, 10)
   );
 
+  const defaultReturn = new Date();
+  defaultReturn.setDate(defaultReturn.getDate() + 4);
+  const [returnDate, setReturnDate] = useState<string>(
+    defaultReturn.toISOString().slice(0, 10)
+  );
+
   const [adults, setAdults] = useState<number>(1);
   const [children, setChildren] = useState<number>(0);
   const [availableCities, setAvailableCities] = useState<{ origins: string[]; destinations: string[] }>({
-    origins: ['Bangalore (BLR)', 'Delhi (DEL)', 'Mumbai (BOM)'],
-    destinations: ['Delhi (DEL)', 'Bangalore (BLR)', 'Mumbai (BOM)', 'Chennai (MAA)'],
+    origins: ['Bangalore (BLR)', 'Delhi (DEL)', 'Mumbai (BOM)', 'Chennai (MAA)', 'Goa (GOI)', 'Hyderabad (HYD)'],
+    destinations: ['Delhi (DEL)', 'Bangalore (BLR)', 'Mumbai (BOM)', 'Chennai (MAA)', 'Goa (GOI)', 'Hyderabad (HYD)'],
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +95,15 @@ export const HomePage: React.FC = () => {
     setDestination(temp);
   };
 
+  const handleSelectDestination = (dest: string) => {
+    if (origin.trim().toLowerCase() === dest.trim().toLowerCase()) {
+      const other = availableCities.origins.find((c) => c.toLowerCase() !== dest.toLowerCase()) || 'Bangalore (BLR)';
+      setOrigin(other);
+    }
+    setDestination(dest);
+    window.scrollTo({ top: 120, behavior: 'smooth' });
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -63,11 +123,31 @@ export const HomePage: React.FC = () => {
       return;
     }
 
-    navigate(
-      `/flights?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(
-        destination
-      )}&travelDate=${encodeURIComponent(travelDate)}&adults=${adults}&children=${children}`
-    );
+    if (tripType === 'roundtrip') {
+      if (!returnDate) {
+        setError('Please select a return date for your round trip.');
+        return;
+      }
+      if (returnDate < travelDate) {
+        setError('Return date cannot be earlier than departure date.');
+        return;
+      }
+    }
+
+    const params = new URLSearchParams({
+      tripType,
+      origin: origin.trim(),
+      destination: destination.trim(),
+      travelDate,
+      adults: adults.toString(),
+      children: children.toString(),
+    });
+
+    if (tripType === 'roundtrip') {
+      params.set('returnDate', returnDate);
+    }
+
+    navigate(`/flights?${params.toString()}`);
   };
 
   return (
@@ -96,7 +176,7 @@ export const HomePage: React.FC = () => {
               </p>
             </div>
 
-            {/* Right Column: High-Res Hero Image with Sky Clouds */}
+            {/* Right Column: Clean Hero Image */}
             <div className="lg:col-span-6 relative flex justify-center lg:justify-end">
               <div className="relative w-full max-w-lg lg:max-w-none">
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-blue-900/10 border-4 border-white aspect-[4/3] bg-gradient-to-tr from-sky-100 to-blue-50">
@@ -105,7 +185,6 @@ export const HomePage: React.FC = () => {
                     alt="CredoFly Airplane in Sky"
                     className="w-full h-full object-cover object-center transform hover:scale-105 transition-transform duration-700"
                     onError={(e) => {
-                      // Fallback if image path has issue
                       (e.target as HTMLImageElement).src =
                         'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=1200&auto=format&fit=crop';
                     }}
@@ -212,9 +291,9 @@ export const HomePage: React.FC = () => {
                   </div>
 
                   {/* Travel Date */}
-                  <div className="md:col-span-3 space-y-1.5">
+                  <div className={tripType === 'roundtrip' ? 'md:col-span-2 space-y-1.5' : 'md:col-span-3 space-y-1.5'}>
                     <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                      Travel Date
+                      Departure Date
                     </label>
                     <div className="relative">
                       <input
@@ -222,26 +301,44 @@ export const HomePage: React.FC = () => {
                         value={travelDate}
                         min={new Date().toISOString().slice(0, 10)}
                         onChange={(e) => setTravelDate(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
                       />
                     </div>
                   </div>
 
+                  {/* Return Date (if roundtrip) */}
+                  {tripType === 'roundtrip' && (
+                    <div className="md:col-span-2 space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        Return Date
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={returnDate}
+                          min={travelDate}
+                          onChange={(e) => setReturnDate(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Passenger mix */}
-                  <div className="md:col-span-2 space-y-1.5">
+                  <div className={tripType === 'roundtrip' ? 'md:col-span-1 space-y-1.5' : 'md:col-span-2 space-y-1.5'}>
                     <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Passengers
                     </label>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-1">
                       <select
                         value={adults}
                         onChange={(e) => setAdults(Number(e.target.value))}
                         title="Adults (Age 12+)"
-                        className="w-1/2 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                        className="w-1/2 px-1 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:ring-2 focus:ring-blue-500"
                       >
                         {[1, 2, 3, 4, 5, 6].map((n) => (
                           <option key={n} value={n}>
-                            {n} Ad
+                            {n}A
                           </option>
                         ))}
                       </select>
@@ -249,11 +346,11 @@ export const HomePage: React.FC = () => {
                         value={children}
                         onChange={(e) => setChildren(Number(e.target.value))}
                         title="Children (Age 2-11)"
-                        className="w-1/2 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                        className="w-1/2 px-1 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs font-medium focus:ring-2 focus:ring-blue-500"
                       >
                         {[0, 1, 2, 3, 4].map((n) => (
                           <option key={n} value={n}>
-                            {n} Ch
+                            {n}C
                           </option>
                         ))}
                       </select>
@@ -275,8 +372,63 @@ export const HomePage: React.FC = () => {
             </div>
           </div>
 
+          {/* Popular Destinations Showcase */}
+          <div className="mt-20 max-w-5xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
+              <div>
+                <div className="inline-flex items-center space-x-1.5 text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Curated City Escapes</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-navy-950">
+                  Popular Domestic Destinations
+                </h2>
+                <p className="text-slate-500 text-xs sm:text-sm mt-1">
+                  Explore top routes with daily direct flights on CredoFly Express.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {POPULAR_DESTINATIONS.map((dest) => (
+                <div
+                  key={dest.city}
+                  onClick={() => handleSelectDestination(dest.city)}
+                  className="group bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-xl hover:border-blue-400 transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                >
+                  <div className="relative h-44 overflow-hidden">
+                    <img
+                      src={dest.image}
+                      alt={dest.title}
+                      className="w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded-full text-[11px] font-bold text-slate-800 shadow-sm">
+                      From {dest.startingFare}
+                    </div>
+                    <div className="absolute bottom-3 left-4 text-white">
+                      <p className="text-lg font-black tracking-tight">{dest.title}</p>
+                      <p className="text-[11px] text-slate-200 font-medium">{dest.tagline}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 flex items-center justify-between bg-slate-50/60 border-t border-slate-100">
+                    <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-600">
+                      <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{dest.city}</span>
+                    </div>
+                    <span className="text-xs font-bold text-blue-600 group-hover:text-blue-700 inline-flex items-center space-x-1 transition">
+                      <span>Book Flights</span>
+                      <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Feature Highlight Cards */}
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-start space-x-4">
               <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 flex-shrink-0">
                 <ShieldCheck className="w-6 h-6" />

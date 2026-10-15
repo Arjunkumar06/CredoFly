@@ -19,6 +19,7 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminFlightsPage } from './pages/admin/AdminFlightsPage';
+import { AdminSchedulePage } from './pages/admin/AdminSchedulePage';
 import { AdminBookingsPage } from './pages/admin/AdminBookingsPage';
 import { AdminBookingDetailsPage } from './pages/admin/AdminBookingDetailsPage';
 import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
@@ -47,6 +48,7 @@ export const App: React.FC = () => {
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
         <Route path="flights" element={<AdminFlightsPage />} />
+        <Route path="schedule" element={<AdminSchedulePage />} />
         <Route path="bookings" element={<AdminBookingsPage />} />
         <Route path="bookings/:id" element={<AdminBookingDetailsPage />} />
         <Route path="payments" element={<AdminPaymentsPage />} />

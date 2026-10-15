@@ -19,6 +19,7 @@ import {
   AlertCircle,
   MapPin,
   FileText,
+  RefreshCw,
 } from 'lucide-react';
 import { bookingApi } from '../../services/api';
 import { Booking } from '../../types';
@@ -33,6 +34,7 @@ export const BookingConfirmationPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(!booking);
   const [error, setError] = useState<string | null>(null);
   const [copiedPnr, setCopiedPnr] = useState(false);
+  const [copiedReturnPnr, setCopiedReturnPnr] = useState(false);
   const [copiedRef, setCopiedRef] = useState(false);
 
   useEffect(() => {
@@ -57,11 +59,14 @@ export const BookingConfirmationPage: React.FC = () => {
     window.print();
   };
 
-  const copyToClipboard = (text: string, type: 'pnr' | 'ref') => {
+  const copyToClipboard = (text: string, type: 'pnr' | 'returnPnr' | 'ref') => {
     navigator.clipboard.writeText(text);
     if (type === 'pnr') {
       setCopiedPnr(true);
       setTimeout(() => setCopiedPnr(false), 2000);
+    } else if (type === 'returnPnr') {
+      setCopiedReturnPnr(true);
+      setTimeout(() => setCopiedReturnPnr(false), 2000);
     } else {
       setCopiedRef(true);
       setTimeout(() => setCopiedRef(false), 2000);
@@ -105,6 +110,16 @@ export const BookingConfirmationPage: React.FC = () => {
     }
   );
 
+  const returnBooking = booking.returnBooking;
+  const returnTravelDateFormatted = returnBooking
+    ? new Date(returnBooking.flightInstance.travelDate).toLocaleDateString('en-US', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null;
+
   const bookingDateFormatted = new Date(booking.createdAt).toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'short',
@@ -129,6 +144,11 @@ export const BookingConfirmationPage: React.FC = () => {
       : '15 Kg (1 piece)';
 
   const displayPnr = booking.pnr || `CF${booking.bookingReference.slice(-6)}`;
+  const displayReturnPnr = returnBooking?.pnr || (returnBooking ? `CF${returnBooking.bookingReference.slice(-6)}` : null);
+
+  const totalPaid = returnBooking
+    ? Number(booking.totalAmount) + Number(returnBooking.totalAmount)
+    : Number(booking.totalAmount);
 
   return (
     <div className="bg-slate-50 min-h-screen py-8 print:py-0 print:bg-white">
@@ -165,13 +185,18 @@ export const BookingConfirmationPage: React.FC = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-200/60 px-2.5 py-0.5 rounded-full">
                   Confirmed & Ticketed
                 </span>
+                {returnBooking && (
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-800 bg-blue-100 px-2.5 py-0.5 rounded-full">
+                    Round Trip
+                  </span>
+                )}
                 <span className="text-xs text-slate-500">Booked on {bookingDateFormatted}</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-emerald-950 mt-1">
                 Booking Confirmed!
               </h1>
               <p className="text-xs sm:text-sm text-emerald-700 mt-0.5">
-                Your flight is confirmed. Your E-Ticket and travel itinerary receipt are ready below.
+                Your flight{returnBooking ? 's are' : ' is'} confirmed. Official E-Ticket and travel itinerary receipt ready below.
               </p>
             </div>
           </div>
@@ -202,28 +227,52 @@ export const BookingConfirmationPage: React.FC = () => {
                     Express
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 tracking-wide">Official Electronic Ticket Receipt & Boarding Summary</p>
+                <p className="text-[11px] text-slate-300 tracking-wide">
+                  Official Electronic Ticket Receipt & Boarding Summary {returnBooking ? '(Round Trip)' : ''}
+                </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 sm:text-right">
+            <div className="flex flex-wrap items-center gap-3 sm:text-right">
+              {/* Outbound PNR */}
               <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
                 <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider block">
-                  Airline PNR
+                  {returnBooking ? 'Outbound PNR' : 'Airline PNR'}
                 </span>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xl font-black text-amber-300 font-mono tracking-wider">
+                  <span className="text-lg sm:text-xl font-black text-amber-300 font-mono tracking-wider">
                     {displayPnr}
                   </span>
                   <button
                     onClick={() => copyToClipboard(displayPnr, 'pnr')}
-                    title="Copy PNR"
+                    title="Copy Outbound PNR"
                     className="no-print p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition"
                   >
                     {copiedPnr ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
+
+              {/* Return PNR (if round-trip) */}
+              {returnBooking && displayReturnPnr && (
+                <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
+                  <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider block">
+                    Return PNR
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg sm:text-xl font-black text-emerald-300 font-mono tracking-wider">
+                      {displayReturnPnr}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(displayReturnPnr, 'returnPnr')}
+                      title="Copy Return PNR"
+                      className="no-print p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition"
+                    >
+                      {copiedReturnPnr ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
@@ -249,6 +298,7 @@ export const BookingConfirmationPage: React.FC = () => {
               <span className="flex items-center space-x-1.5 text-slate-800">
                 <Calendar className="w-4 h-4 text-blue-600" />
                 <span>{travelDateFormatted}</span>
+                {returnTravelDateFormatted && <span> &bull; Return: {returnTravelDateFormatted}</span>}
               </span>
               <span className="text-slate-300">|</span>
               <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
@@ -262,8 +312,14 @@ export const BookingConfirmationPage: React.FC = () => {
             </div>
           </div>
 
-          {/* MakeMyTrip-Style Route & Timings Board */}
+          {/* Outbound Route & Timings Board */}
           <div className="p-6 sm:p-8 border-b border-slate-200">
+            <div className="flex items-center space-x-2 mb-3">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                {returnBooking ? 'Leg 1: Outbound Journey' : 'Flight Itinerary'}
+              </span>
+            </div>
+
             <div className="bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50 border border-blue-100 rounded-2xl p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
                 
@@ -325,6 +381,77 @@ export const BookingConfirmationPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Return Route & Timings Board (if round-trip) */}
+          {returnBooking && (
+            <div className="p-6 sm:p-8 border-b border-slate-200">
+              <div className="flex items-center space-x-2 mb-3">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200">
+                  Leg 2: Return Journey
+                </span>
+              </div>
+
+              <div className="bg-gradient-to-r from-indigo-50/60 via-purple-50/40 to-slate-50 border border-indigo-100 rounded-2xl p-6 sm:p-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                  
+                  {/* Origin */}
+                  <div className="text-left">
+                    <div className="inline-flex items-center space-x-1 text-xs font-bold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md mb-2">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Departure</span>
+                    </div>
+                    <h3 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                      {returnBooking.flightInstance.departureTime}
+                    </h3>
+                    <p className="text-base font-extrabold text-slate-800 mt-1">
+                      {returnBooking.flightInstance.flight.origin}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 font-medium">Terminal 1 (CredoFly Departure)</p>
+                  </div>
+
+                  {/* Duration & Flight Info */}
+                  <div className="flex flex-col items-center justify-center text-center px-4">
+                    <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider">
+                      {returnBooking.flightInstance.flight.flightCode}
+                    </span>
+                    
+                    <div className="w-full flex items-center justify-center my-3">
+                      <div className="h-[2px] bg-slate-300 flex-1 relative">
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-indigo-600"></div>
+                      </div>
+                      <div className="mx-3 w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-md">
+                        <Plane className="w-4 h-4 transform rotate-135" />
+                      </div>
+                      <div className="h-[2px] bg-slate-300 flex-1 relative">
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-indigo-600"></div>
+                      </div>
+                    </div>
+
+                    <span className="inline-block text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
+                      Confirmed Non-Stop
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-1">CredoFly Express Service</span>
+                  </div>
+
+                  {/* Destination */}
+                  <div className="text-left md:text-right">
+                    <div className="inline-flex items-center space-x-1 text-xs font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded-md mb-2">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Arrival</span>
+                    </div>
+                    <h3 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                      {returnBooking.flightInstance.arrivalTime}
+                    </h3>
+                    <p className="text-base font-extrabold text-slate-800 mt-1">
+                      {returnBooking.flightInstance.flight.destination}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 font-medium">Terminal 2 (Arrival)</p>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Passenger List */}
           <div className="p-6 sm:p-8 border-b border-slate-200">
             <div className="flex items-center justify-between mb-4">
@@ -345,38 +472,46 @@ export const BookingConfirmationPage: React.FC = () => {
                     <th className="py-3 px-4">#</th>
                     <th className="py-3 px-4">Passenger Name</th>
                     <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Gender & Age</th>
-                    <th className="py-3 px-4 text-right">Seat / Status</th>
+                    <th className="py-3 px-4">Outbound Seat</th>
+                    {returnBooking && <th className="py-3 px-4">Return Seat</th>}
+                    <th className="py-3 px-4 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {booking.passengers.map((p, idx) => (
-                    <tr key={p.id || idx} className="hover:bg-slate-50/60 transition">
-                      <td className="py-3.5 px-4 font-bold text-slate-400">{idx + 1}</td>
-                      <td className="py-3.5 px-4 font-extrabold text-slate-900">
-                        {p.name}
-                      </td>
-                      <td className="py-3.5 px-4 text-xs font-semibold text-slate-600">
-                        {p.type === 'ADULT' ? 'Adult (12+ yrs)' : 'Child (2-11 yrs)'}
-                      </td>
-                      <td className="py-3.5 px-4 text-xs text-slate-500">
-                        {p.gender ? `${p.gender.charAt(0)}${p.gender.slice(1).toLowerCase()}` : '—'}
-                        {p.age ? `, ${p.age} yrs` : ''}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        {p.isCancelled ? (
-                          <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full">
-                            Cancelled
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center space-x-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span>Confirmed</span>
-                          </span>
+                  {booking.passengers.map((p, idx) => {
+                    const retP = returnBooking?.passengers?.[idx];
+                    return (
+                      <tr key={p.id || idx} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3.5 px-4 font-bold text-slate-400">{idx + 1}</td>
+                        <td className="py-3.5 px-4 font-extrabold text-slate-900">
+                          {p.name}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs font-semibold text-slate-600">
+                          {p.type === 'ADULT' ? 'Adult (12+ yrs)' : 'Child (2-11 yrs)'}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs font-bold text-blue-700">
+                          {p.seatNumber ? `Seat ${p.seatNumber}` : 'Auto-Assigned'}
+                        </td>
+                        {returnBooking && (
+                          <td className="py-3.5 px-4 text-xs font-bold text-indigo-700">
+                            {retP?.seatNumber ? `Seat ${retP.seatNumber}` : 'Auto-Assigned'}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="py-3.5 px-4 text-right">
+                          {p.isCancelled ? (
+                            <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full">
+                              Cancelled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center space-x-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>Confirmed</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -426,7 +561,7 @@ export const BookingConfirmationPage: React.FC = () => {
                       <Phone className="w-3.5 h-3.5 text-slate-400" />
                       <span>Phone:</span>
                     </span>
-                    <span className="font-bold text-slate-900">{booking.contactPhone || '+91 Primary Contact'}</span>
+                    <span className="font-bold text-slate-900">{booking.contactPhone || 'Registered Mobile'}</span>
                   </div>
                   <div className="flex justify-between items-center py-1.5">
                     <span className="font-medium text-slate-700">Payment Status:</span>
@@ -447,12 +582,14 @@ export const BookingConfirmationPage: React.FC = () => {
                 Total Amount Paid
               </span>
               <p className="text-xs text-slate-500 mt-0.5">
-                Includes base airfare for {booking.passengers.length} passenger{booking.passengers.length > 1 ? 's' : ''}, airport development fees, and applicable GST.
+                {returnBooking
+                  ? 'Includes base airfare for both flight legs, seat selection, airport fees and applicable GST.'
+                  : `Includes base airfare for ${booking.passengers.length} passenger${booking.passengers.length > 1 ? 's' : ''}, airport development fees, and applicable GST.`}
               </p>
             </div>
             <div className="text-left sm:text-right">
               <span className="text-3xl font-black text-blue-600 font-mono">
-                ₹{Number(booking.totalAmount).toLocaleString('en-IN')}
+                ₹{totalPaid.toLocaleString('en-IN')}
               </span>
               <span className="block text-[11px] font-semibold text-emerald-700">
                 Payment Completed • No Balance Due

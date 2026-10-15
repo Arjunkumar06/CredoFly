@@ -8,8 +8,8 @@ export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { loginAdmin } = useAdminAuth();
 
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('adminpassword123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,12 +37,6 @@ export const AdminLoginPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleFillDemo = () => {
-    setUsername('admin');
-    setPassword('adminpassword123');
-    setError(null);
   };
 
   return (
@@ -101,21 +95,6 @@ export const AdminLoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
             />
-          </div>
-
-          {/* Quick Pre-fill Pill */}
-          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center justify-between text-xs">
-            <div>
-              <p className="font-bold text-navy-950 text-[11px]">Default Admin Credentials</p>
-              <p className="font-mono text-slate-600 text-[11px]">admin / adminpassword123</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="px-2.5 py-1 bg-white border border-blue-300 hover:bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold transition shadow-xs"
-            >
-              Pre-fill
-            </button>
           </div>
 
           <div className="pt-2">

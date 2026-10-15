@@ -75,6 +75,7 @@ export const bookingApi = {
   }) => api.post('/bookings/preview', data),
   create: (data: {
     flightInstanceId: string;
+    returnFlightInstanceId?: string;
     adultCount: number;
     childCount: number;
     cabinClass?: string;
@@ -82,6 +83,14 @@ export const bookingApi = {
     contactPhone?: string;
     paymentMethod?: string;
     passengers: Array<{
+      name: string;
+      type: 'ADULT' | 'CHILD';
+      gender?: 'MALE' | 'FEMALE' | 'OTHER';
+      age?: number;
+      seatNumber?: string;
+      seatPrice?: number;
+    }>;
+    returnPassengers?: Array<{
       name: string;
       type: 'ADULT' | 'CHILD';
       gender?: 'MALE' | 'FEMALE' | 'OTHER';
@@ -129,6 +138,10 @@ export const adminApi = {
   cancelBooking: (id: string) => api.post(`/admin/bookings/${id}/cancel`),
   // Extended operations
   generateSchedules: (days?: number) => api.post('/admin/schedules/generate', { days }),
+  getScheduleInstances: (params?: { startDate?: string; endDate?: string; flightId?: string }) =>
+    api.get('/admin/schedule/instances', { params }),
+  updateSingleFlightInstance: (id: string, data: any) =>
+    api.patch(`/admin/schedule/instances/${id}`, data),
   getPayments: (params?: { status?: string }) => api.get('/admin/payments', { params }),
   verifyPayment: (id: string, data: { status: 'VERIFIED' | 'REJECTED'; adminNotes?: string }) =>
     api.post(`/admin/payments/${id}/verify`, data),

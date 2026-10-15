@@ -50,6 +50,8 @@ export const searchFlightsSchema = z.object({
   origin: z.string().min(1, 'Origin is required'),
   destination: z.string().min(1, 'Destination is required'),
   travelDate: z.string().min(1, 'Travel date is required'),
+  returnDate: z.string().optional(),
+  tripType: z.enum(['oneway', 'roundtrip']).default('oneway'),
   adults: z.coerce.number().int().min(0).default(1),
   children: z.coerce.number().int().min(0).default(0),
 }).refine((data) => data.origin.trim().toLowerCase() !== data.destination.trim().toLowerCase(), {
@@ -58,6 +60,14 @@ export const searchFlightsSchema = z.object({
 }).refine((data) => data.adults + data.children >= 1, {
   message: 'At least one passenger must be selected',
   path: ['adults'],
+}).refine((data) => {
+  if (data.tripType === 'roundtrip' && data.returnDate) {
+    return data.returnDate >= data.travelDate;
+  }
+  return true;
+}, {
+  message: 'Return date cannot be earlier than departure date',
+  path: ['returnDate'],
 });
 
 export const createFlightSchema = z.object({
@@ -109,6 +119,7 @@ export const passengerInputSchema = z.object({
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
   age: z.coerce.number().int().min(1).max(120).optional(),
   seatNumber: z.string().optional(),
+  seatPrice: z.coerce.number().optional(),
 });
 
 export const bookingPreviewSchema = z.object({
@@ -123,6 +134,7 @@ export const bookingPreviewSchema = z.object({
 
 export const createBookingSchema = z.object({
   flightInstanceId: z.string().uuid('Invalid flight departure ID'),
+  returnFlightInstanceId: z.string().uuid('Invalid return flight departure ID').optional(),
   adultCount: z.number().int().min(0),
   childCount: z.number().int().min(0),
   cabinClass: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST_CLASS']).default('ECONOMY'),
@@ -130,10 +142,13 @@ export const createBookingSchema = z.object({
   contactPhone: z.string().optional().or(z.literal('')),
   paymentMethod: z.enum(['GPAY_QR', 'CARD', 'UPI', 'NET_BANKING', 'DEMO_PAY']).default('DEMO_PAY'),
   passengers: z.array(passengerInputSchema).min(1, 'Please provide passenger details'),
+  returnPassengers: z.array(passengerInputSchema).optional(),
 }).refine((data) => data.adultCount + data.childCount >= 1, {
   message: 'At least one passenger must be selected',
 }).refine((data) => data.passengers.length === data.adultCount + data.childCount, {
   message: 'Passenger list count must match total adult and child count',
+}).refine((data) => !data.returnPassengers || data.returnPassengers.length === data.adultCount + data.childCount, {
+  message: 'Return passenger list count must match total adult and child count',
 });
 
 export const partialCancelSchema = z.object({

@@ -47,6 +47,7 @@ export const AdminLayout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Flights', path: '/admin/flights', icon: Plane },
+    { label: '12-Month Schedule', path: '/admin/schedule', icon: Calendar },
     { label: 'Bookings', path: '/admin/bookings', icon: Ticket },
     { label: 'Payments Queue', path: '/admin/payments', icon: CreditCard },
     { label: 'Pricing & Holidays', path: '/admin/pricing', icon: TrendingUp },

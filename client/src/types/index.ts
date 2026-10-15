@@ -163,6 +163,7 @@ export interface Booking {
   cancelledAt?: string | null;
   passengers: Passenger[];
   auditEvents?: BookingEvent[];
+  returnBooking?: Booking | null;
 }
 
 export interface DashboardStats {

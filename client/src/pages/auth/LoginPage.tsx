@@ -10,8 +10,8 @@ export const LoginPage: React.FC = () => {
   const redirect = searchParams.get('redirect') || '/';
   const { login } = useAuth();
 
-  const [username, setUsername] = useState('CF-CUST-100001'); // Pre-fill with seeded Customer ID
-  const [password, setPassword] = useState('Password123!');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -194,9 +194,6 @@ export const LoginPage: React.FC = () => {
               />
               <span>Remember me</span>
             </label>
-            <span className="text-slate-400 text-[11px]">
-              Demo: <code className="text-blue-600 font-bold">CF-CUST-100001</code> / <code className="text-slate-600">Password123!</code>
-            </span>
           </div>
 
           <div className="pt-2">

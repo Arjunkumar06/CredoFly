@@ -241,9 +241,18 @@ export class AdminController {
       const holidays = await prisma.holiday.findMany({
         orderBy: { date: 'asc' },
       });
+      const formatted = holidays.map((h) => ({
+        id: h.id,
+        name: h.name,
+        date: h.date.toISOString().slice(0, 10),
+        affectsSchedule: h.affectsSchedule,
+        affectsPricing: h.affectsPricing,
+        surgePercentage: h.surgePercentage.toNumber(),
+        surgeMultiplier: 1 + h.surgePercentage.toNumber() / 100,
+      }));
       return res.status(200).json({
         success: true,
-        holidays,
+        holidays: formatted,
       });
     } catch (error) {
       next(error);
@@ -252,7 +261,21 @@ export class AdminController {
 
   static async createHoliday(req: Request, res: Response, next: NextFunction) {
     try {
-      const validated = holidaySchema.parse(req.body);
+      let surgePercentage = 15;
+      if (req.body.surgePercentage !== undefined) {
+        surgePercentage = Number(req.body.surgePercentage);
+      } else if (req.body.surgeMultiplier !== undefined) {
+        surgePercentage = Math.round((Number(req.body.surgeMultiplier) - 1) * 100);
+      }
+
+      const validated = holidaySchema.parse({
+        name: req.body.name,
+        date: req.body.date,
+        affectsSchedule: req.body.affectsSchedule ?? false,
+        affectsPricing: req.body.affectsPricing ?? true,
+        surgePercentage,
+      });
+
       const [y, m, d] = validated.date.split('-').map(Number);
       const parsedDate = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
 
@@ -276,7 +299,12 @@ export class AdminController {
       return res.status(201).json({
         success: true,
         message: 'Holiday configured successfully',
-        holiday,
+        holiday: {
+          ...holiday,
+          date: holiday.date.toISOString().slice(0, 10),
+          surgePercentage: holiday.surgePercentage.toNumber(),
+          surgeMultiplier: 1 + holiday.surgePercentage.toNumber() / 100,
+        },
       });
     } catch (error) {
       next(error);
@@ -304,7 +332,13 @@ export class AdminController {
       });
       return res.status(200).json({
         success: true,
-        rules,
+        rules: rules.map((r) => ({
+          ...r,
+          startDate: r.startDate.toISOString().slice(0, 10),
+          endDate: r.endDate.toISOString().slice(0, 10),
+          adjustmentValue: r.adjustmentValue.toNumber(),
+          applicableDays: JSON.parse(r.applicableDays || '[]'),
+        })),
       });
     } catch (error) {
       next(error);
@@ -335,7 +369,171 @@ export class AdminController {
       return res.status(201).json({
         success: true,
         message: 'Pricing rule created successfully',
-        rule,
+        rule: {
+          ...rule,
+          startDate: rule.startDate.toISOString().slice(0, 10),
+          endDate: rule.endDate.toISOString().slice(0, 10),
+          adjustmentValue: rule.adjustmentValue.toNumber(),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updatePricingRule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const { isActive, name, adjustmentValue, priority } = req.body;
+      const data: any = {};
+      if (isActive !== undefined) data.isActive = isActive;
+      if (name) data.name = name;
+      if (adjustmentValue !== undefined) data.adjustmentValue = new Prisma.Decimal(adjustmentValue);
+      if (priority !== undefined) data.priority = Number(priority);
+
+      const rule = await prisma.pricingRule.update({
+        where: { id },
+        data,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Pricing rule updated successfully',
+        rule: {
+          ...rule,
+          startDate: rule.startDate.toISOString().slice(0, 10),
+          endDate: rule.endDate.toISOString().slice(0, 10),
+          adjustmentValue: rule.adjustmentValue.toNumber(),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deletePricingRule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      await prisma.pricingRule.delete({ where: { id } });
+      return res.status(200).json({
+        success: true,
+        message: 'Pricing rule deleted successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // 12-Month Schedule Calendar & Single Flight Instance Management
+  static async getScheduleInstances(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, flightId, status } = req.query;
+
+      let start = startDate ? new Date(startDate as string) : new Date();
+      start.setHours(0, 0, 0, 0);
+
+      let end = endDate ? new Date(endDate as string) : new Date(start);
+      if (!endDate) {
+        end.setDate(end.getDate() + 35);
+      }
+      end.setHours(23, 59, 59, 999);
+
+      const where: any = {
+        travelDate: {
+          gte: start,
+          lte: end,
+        },
+      };
+
+      if (flightId) {
+        where.flightId = flightId as string;
+      }
+
+      if (status) {
+        where.status = status as string;
+      }
+
+      const instances = await prisma.flightInstance.findMany({
+        where,
+        include: {
+          flight: true,
+          _count: {
+            select: { bookings: true, seats: true },
+          },
+        },
+        orderBy: [{ travelDate: 'asc' }, { departureTime: 'asc' }],
+      });
+
+      return res.status(200).json({
+        success: true,
+        count: instances.length,
+        instances: instances.map((inst) => ({
+          id: inst.id,
+          flightId: inst.flightId,
+          flightCode: inst.flight.flightCode,
+          airlineName: inst.flight.airlineName,
+          origin: inst.flight.origin,
+          destination: inst.flight.destination,
+          travelDate: inst.travelDate.toISOString().slice(0, 10),
+          departureTime: inst.departureTime,
+          arrivalTime: inst.arrivalTime,
+          capacity: inst.flight.capacity,
+          availableSeats: inst.availableSeats,
+          bookedSeats: inst.flight.capacity - inst.availableSeats,
+          adultFare: inst.adultFare.toNumber(),
+          childFare: inst.childFare.toNumber(),
+          status: inst.status,
+          bookingsCount: inst._count.bookings,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateSingleFlightInstance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const { departureTime, arrivalTime, adultFare, childFare, status, availableSeats } = req.body;
+
+      const data: any = {};
+      if (departureTime) data.departureTime = departureTime;
+      if (arrivalTime) data.arrivalTime = arrivalTime;
+      if (adultFare !== undefined) data.adultFare = new Prisma.Decimal(adultFare);
+      if (childFare !== undefined) data.childFare = new Prisma.Decimal(childFare);
+      if (status) data.status = status;
+      if (availableSeats !== undefined) data.availableSeats = Number(availableSeats);
+
+      const updated = await prisma.flightInstance.update({
+        where: { id },
+        data,
+        include: { flight: true },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          action: 'FLIGHT_INSTANCE_UPDATED',
+          entity: 'FlightInstance',
+          entityId: id,
+          actor: 'admin',
+          details: `Flight instance ${updated.flight.flightCode} on ${updated.travelDate.toISOString().slice(0, 10)} updated: ${JSON.stringify(data)}.`,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Flight departure instance updated successfully',
+        instance: {
+          id: updated.id,
+          flightCode: updated.flight.flightCode,
+          travelDate: updated.travelDate.toISOString().slice(0, 10),
+          departureTime: updated.departureTime,
+          arrivalTime: updated.arrivalTime,
+          adultFare: updated.adultFare.toNumber(),
+          childFare: updated.childFare.toNumber(),
+          status: updated.status,
+          availableSeats: updated.availableSeats,
+        },
       });
     } catch (error) {
       next(error);

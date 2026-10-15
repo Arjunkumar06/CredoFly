@@ -114,6 +114,11 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
     setAssignedSeats(updated);
   };
 
+  const getCol = (s: SeatMapItem) => s.columnLetter || s.seatNumber?.replace(/^[0-9]+/, '') || '';
+  const isSeatOccupied = (s: SeatMapItem) => s.isOccupied ?? ((s as any).status === 'OCCUPIED');
+  const isSeatBlocked = (s: SeatMapItem) => s.isBlocked ?? ((s as any).status === 'BLOCKED');
+  const isExit = (s: SeatMapItem) => s.isExitRow ?? ((s as any).features?.includes('EXIT_ROW') || s.rowNumber === 12 || s.rowNumber === 13);
+
   const totalSeatFee = assignedSeats.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
 
   const getSeatColor = (seat: SeatMapItem) => {
@@ -133,7 +138,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
     }
 
     // Occupied or blocked
-    if (seat.isOccupied || seat.isBlocked) {
+    if (isSeatOccupied(seat) || isSeatBlocked(seat)) {
       return 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-60';
     }
 
@@ -321,9 +326,9 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
               <div className="space-y-2">
                 {sortedRowNumbers.map((rowNum) => {
                   const rowSeats = rowsMap.get(rowNum) || [];
-                  const leftSeats = rowSeats.filter((s) => ['A', 'B', 'C'].includes(s.columnLetter));
-                  const rightSeats = rowSeats.filter((s) => ['D', 'E', 'F'].includes(s.columnLetter));
-                  const isExitRow = rowSeats.some((s) => s.isExitRow);
+                  const leftSeats = rowSeats.filter((s) => ['A', 'B', 'C'].includes(getCol(s)));
+                  const rightSeats = rowSeats.filter((s) => ['D', 'E', 'F'].includes(getCol(s)));
+                  const isExitRow = rowSeats.some((s) => isExit(s));
 
                   return (
                     <div key={rowNum} className="relative">
@@ -339,14 +344,14 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                         {/* Left seat block (A, B, C) */}
                         <div className="flex space-x-2">
                           {['A', 'B', 'C'].map((col) => {
-                            const seat = leftSeats.find((s) => s.columnLetter === col);
-                            if (!seat) return <div key={col} className="w-7 h-7"></div>;
+                            const seat = leftSeats.find((s) => getCol(s) === col);
+                            if (!seat) return <div key={col} className="w-7 h-7 sm:w-8 sm:h-8"></div>;
 
                             return (
                               <button
                                 key={seat.id}
                                 type="button"
-                                disabled={seat.isOccupied || seat.isBlocked}
+                                disabled={isSeatOccupied(seat) || isSeatBlocked(seat)}
                                 onClick={() => handleSeatClick(seat)}
                                 onMouseEnter={() => setHoveredSeat(seat)}
                                 onMouseLeave={() => setHoveredSeat(null)}
@@ -355,7 +360,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                                 )}`}
                                 title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}`}
                               >
-                                {seat.columnLetter}
+                                {col}
                               </button>
                             );
                           })}
@@ -369,14 +374,14 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                         {/* Right seat block (D, E, F) */}
                         <div className="flex space-x-2">
                           {['D', 'E', 'F'].map((col) => {
-                            const seat = rightSeats.find((s) => s.columnLetter === col);
-                            if (!seat) return <div key={col} className="w-7 h-7"></div>;
+                            const seat = rightSeats.find((s) => getCol(s) === col);
+                            if (!seat) return <div key={col} className="w-7 h-7 sm:w-8 sm:h-8"></div>;
 
                             return (
                               <button
                                 key={seat.id}
                                 type="button"
-                                disabled={seat.isOccupied || seat.isBlocked}
+                                disabled={isSeatOccupied(seat) || isSeatBlocked(seat)}
                                 onClick={() => handleSeatClick(seat)}
                                 onMouseEnter={() => setHoveredSeat(seat)}
                                 onMouseLeave={() => setHoveredSeat(null)}
@@ -385,7 +390,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                                 )}`}
                                 title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}`}
                               >
-                                {seat.columnLetter}
+                                {col}
                               </button>
                             );
                           })}

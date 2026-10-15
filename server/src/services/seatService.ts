@@ -34,11 +34,11 @@ export class SeatService {
       orderBy: [{ rowNumber: 'asc' }, { seatNumber: 'asc' }],
     });
 
-    // If no seats exist for this instance, generate them from template
+    // If no seats exist for this instance, generate them
     if (seats.length === 0) {
       let config = instance.flight.aircraftConfig;
 
-      // Fallback: if flight doesn't have an aircraft config, find default A320
+      // Fallback: if flight doesn't have an aircraft config, find or create default A320-33
       if (!config) {
         config = await prisma.aircraftConfiguration.findFirst({
           where: { code: 'A320-33' },
@@ -50,44 +50,152 @@ export class SeatService {
         });
       }
 
-      if (config && config.seats.length > 0) {
-        // Create FlightSeat records
-        const flightSeatsData = config.seats.map((t) => ({
-          flightInstanceId,
-          seatNumber: t.seatNumber,
-          rowNumber: t.rowNumber,
-          seatPosition: t.seatPosition,
-          cabinClass: t.cabinClass,
-          features: t.features,
-          price: t.basePrice,
-          status: t.isBlocked ? 'BLOCKED' : 'AVAILABLE',
-        }));
+      if (!config) {
+        config = await prisma.aircraftConfiguration.create({
+          data: {
+            name: 'Airbus A320neo (3-3 Standard)',
+            code: 'A320-33',
+            seatLayout: '3-3',
+            totalRows: 30,
+            seatsPerRow: 6,
+          },
+          include: { seats: true },
+        });
+      }
 
-        await prisma.flightSeat.createMany({
-          data: flightSeatsData,
+      // If configuration has no seat templates, generate all 180 seats (Rows 1-30, Columns A-F)
+      if (!config.seats || config.seats.length === 0) {
+        const templates = [];
+        const cols = ['A', 'B', 'C', 'D', 'E', 'F'];
+        for (let r = 1; r <= 30; r++) {
+          for (const col of cols) {
+            const seatNumber = `${r}${col}`;
+            let cabinClass = 'ECONOMY';
+            const position = col === 'A' || col === 'F' ? 'WINDOW' : col === 'C' || col === 'D' ? 'AISLE' : 'MIDDLE';
+            let features = 'STANDARD';
+            let basePrice = 0;
+
+            if (r <= 4) {
+              cabinClass = 'BUSINESS';
+              features = 'PREFERRED';
+              basePrice = 1500;
+            } else if (r === 12) {
+              features = 'EXIT_ROW,EXTRA_LEGROOM';
+              basePrice = 750;
+            } else if (r === 13) {
+              features = 'EXTRA_LEGROOM';
+              basePrice = 500;
+            } else {
+              if (position === 'WINDOW') {
+                features = 'PREFERRED,WINDOW';
+                basePrice = 250;
+              } else if (position === 'AISLE') {
+                features = 'PREFERRED,AISLE';
+                basePrice = 200;
+              } else {
+                features = 'STANDARD,MIDDLE';
+                basePrice = 0;
+              }
+            }
+
+            templates.push({
+              aircraftConfigId: config.id,
+              seatNumber,
+              rowNumber: r,
+              seatPosition: position,
+              cabinClass,
+              features,
+              basePrice: new Prisma.Decimal(basePrice),
+              isBlocked: false,
+            });
+          }
+        }
+
+        await prisma.seatTemplate.createMany({
+          data: templates,
           skipDuplicates: true,
         });
 
-        // Some realistic occupied seats (e.g. 10-15 seats already taken) for realism
-        const sampleOccupied = ['3A', '3B', '5C', '6D', '14A', '15F', '18C', '20D'];
-        await prisma.flightSeat.updateMany({
-          where: {
-            flightInstanceId,
-            seatNumber: { in: sampleOccupied },
+        config = (await prisma.aircraftConfiguration.findUnique({
+          where: { id: config.id },
+          include: {
+            seats: {
+              orderBy: [{ rowNumber: 'asc' }, { seatNumber: 'asc' }],
+            },
           },
-          data: { status: 'OCCUPIED' },
-        });
-
-        seats = await prisma.flightSeat.findMany({
-          where: { flightInstanceId },
-          orderBy: [{ rowNumber: 'asc' }, { seatNumber: 'asc' }],
-        });
+        }))!;
       }
+
+      // Create FlightSeat records from templates
+      const flightSeatsData = config.seats.map((t) => ({
+        flightInstanceId,
+        seatNumber: t.seatNumber,
+        rowNumber: t.rowNumber,
+        seatPosition: t.seatPosition,
+        cabinClass: t.cabinClass,
+        features: t.features,
+        price: t.basePrice,
+        status: t.isBlocked ? 'BLOCKED' : 'AVAILABLE',
+      }));
+
+      await prisma.flightSeat.createMany({
+        data: flightSeatsData,
+        skipDuplicates: true,
+      });
+
+      // Populate realistic sample occupied seats
+      const sampleOccupied = ['3A', '3B', '5C', '6D', '14A', '15F', '18C', '20D'];
+      await prisma.flightSeat.updateMany({
+        where: {
+          flightInstanceId,
+          seatNumber: { in: sampleOccupied },
+        },
+        data: { status: 'OCCUPIED' },
+      });
+
+      seats = await prisma.flightSeat.findMany({
+        where: { flightInstanceId },
+        orderBy: [{ rowNumber: 'asc' }, { seatNumber: 'asc' }],
+      });
     }
 
     const layout = instance.flight.aircraftConfig?.seatLayout || '3-3';
     const totalRows = instance.flight.aircraftConfig?.totalRows || 30;
     const aircraftName = instance.flight.aircraftConfig?.name || 'Airbus A320neo (3-3 Standard)';
+    const aircraftCode = instance.flight.aircraftConfig?.code || 'A320-33';
+
+    const mappedSeats = seats.map((s) => {
+      const col = s.seatNumber.replace(/^[0-9]+/, '');
+      const isExit = s.features.includes('EXIT_ROW') || s.rowNumber === 12 || s.rowNumber === 13;
+      const tier =
+        s.cabinClass === 'BUSINESS'
+          ? 'BUSINESS'
+          : isExit
+          ? 'EXIT_ROW'
+          : s.features.includes('EXTRA_LEGROOM')
+          ? 'EXTRA_LEGROOM'
+          : s.features.includes('PREFERRED')
+          ? 'PREFERRED'
+          : 'STANDARD';
+
+      return {
+        id: s.id,
+        seatNumber: s.seatNumber,
+        rowNumber: s.rowNumber,
+        columnLetter: col,
+        seatPosition: s.seatPosition,
+        seatType: s.seatPosition as 'WINDOW' | 'AISLE' | 'MIDDLE',
+        cabinClass: s.cabinClass,
+        tier: tier as 'BUSINESS' | 'EXIT_ROW' | 'EXTRA_LEGROOM' | 'PREFERRED' | 'STANDARD',
+        features: s.features,
+        price: s.price.toNumber(),
+        status: s.status,
+        isExitRow: isExit,
+        isOccupied: s.status === 'OCCUPIED',
+        isBlocked: s.status === 'BLOCKED',
+        bookedByPassenger: s.passengerId ?? null,
+      };
+    });
 
     return {
       flightInstanceId,
@@ -95,20 +203,12 @@ export class SeatService {
       travelDate: instance.travelDate.toISOString().slice(0, 10),
       aircraft: {
         name: aircraftName,
+        code: aircraftCode,
         seatLayout: layout,
         totalRows,
         seatsPerRow: layout === '2-2' ? 4 : 6,
       },
-      seats: seats.map((s) => ({
-        id: s.id,
-        seatNumber: s.seatNumber,
-        rowNumber: s.rowNumber,
-        seatPosition: s.seatPosition,
-        cabinClass: s.cabinClass,
-        features: s.features,
-        price: s.price.toNumber(),
-        status: s.status,
-      })),
+      seats: mappedSeats,
     };
   }
 

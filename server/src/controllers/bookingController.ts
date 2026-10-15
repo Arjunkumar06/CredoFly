@@ -38,6 +38,7 @@ export class BookingController {
       const booking = await BookingService.createBooking({
         userId: req.user.userId,
         flightInstanceId: validated.flightInstanceId,
+        returnFlightInstanceId: validated.returnFlightInstanceId,
         adultCount: validated.adultCount,
         childCount: validated.childCount,
         cabinClass: validated.cabinClass,
@@ -45,6 +46,7 @@ export class BookingController {
         contactPhone: validated.contactPhone || undefined,
         paymentMethod: validated.paymentMethod,
         passengers: validated.passengers,
+        returnPassengers: validated.returnPassengers,
       });
 
       return res.status(201).json({
