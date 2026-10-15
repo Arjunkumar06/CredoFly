@@ -9,16 +9,26 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  // If requesting admin routes, prefer admin basic auth token if stored
+  // 1. If caller explicitly passed Authorization header (e.g. admin verify), keep it
+  const existingAuth =
+    config.headers?.Authorization ||
+    (config.headers as any)?.get?.('Authorization') ||
+    (config.headers as any)?.['authorization'];
+
+  if (existingAuth) {
+    return config;
+  }
+
+  // 2. If requesting admin routes, use stored admin Basic auth
   if (config.url?.startsWith('/admin')) {
     const adminAuth = sessionStorage.getItem('credofly_admin_auth');
     if (adminAuth) {
       config.headers.Authorization = `Basic ${adminAuth}`;
-      return config;
     }
+    return config;
   }
 
-  // Otherwise, use customer JWT token if present
+  // 3. Otherwise, use customer JWT token if present
   const token = localStorage.getItem('credofly_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
