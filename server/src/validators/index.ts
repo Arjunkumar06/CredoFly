@@ -72,12 +72,27 @@ export const updateSchedulesSchema = z.object({
 export const passengerInputSchema = z.object({
   name: z.string().min(1, 'Passenger name is required'),
   type: z.enum(['ADULT', 'CHILD']),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+  age: z.coerce.number().int().min(1).max(120).optional(),
+});
+
+export const bookingPreviewSchema = z.object({
+  flightInstanceId: z.string().uuid('Invalid flight departure ID'),
+  adultCount: z.coerce.number().int().min(0),
+  childCount: z.coerce.number().int().min(0),
+  cabinClass: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS']).default('ECONOMY'),
+}).refine((data) => data.adultCount + data.childCount >= 1, {
+  message: 'At least one passenger must be selected',
 });
 
 export const createBookingSchema = z.object({
   flightInstanceId: z.string().uuid('Invalid flight departure ID'),
   adultCount: z.number().int().min(0),
   childCount: z.number().int().min(0),
+  cabinClass: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS']).default('ECONOMY'),
+  contactEmail: z.string().email('Invalid contact email').optional().or(z.literal('')),
+  contactPhone: z.string().optional().or(z.literal('')),
+  paymentMethod: z.enum(['CARD', 'UPI', 'NET_BANKING', 'DEMO_PAY']).default('DEMO_PAY'),
   passengers: z.array(passengerInputSchema).min(1, 'Please provide passenger details'),
 }).refine((data) => data.adultCount + data.childCount >= 1, {
   message: 'At least one passenger must be selected',

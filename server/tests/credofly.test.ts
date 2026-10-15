@@ -232,7 +232,8 @@ describe('CredoFly API Test Suite', () => {
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.booking.bookingReference).toMatch(/^CF\d+/);
-      expect(Number(res.body.booking.totalAmount)).toBe(7800);
+      // (2 * 3000) + (1 * 1800) base fare = 7800 + (3 * 350 taxes & fees) = 8850
+      expect(Number(res.body.booking.totalAmount)).toBe(8850);
       expect(res.body.booking.status).toBe('CONFIRMED');
       expect(res.body.booking.passengers.length).toBe(3);
       bookingId = res.body.booking.id;
@@ -404,6 +405,100 @@ describe('CredoFly API Test Suite', () => {
         where: { id: flightInstanceId },
       });
       expect(instance?.availableSeats).toBe(3);
+    });
+  });
+
+  describe('6. MakeMyTrip-Style Multi-Step Flight Booking Workflow API', () => {
+    it('should fetch flight instance by ID with policy and route details', async () => {
+      const res = await request(app).get(`/api/flights/instance/${flightInstanceId}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.flight).toBeDefined();
+      expect(res.body.flight.flightCode).toBeDefined();
+      expect(typeof res.body.flight.availableSeats).toBe('number');
+      expect(res.body.flight.policies).toBeDefined();
+      expect(res.body.flight.policies.cancellation).toBeDefined();
+    });
+
+    it('should return 404 for non-existent flight instance', async () => {
+      const res = await request(app).get('/api/flights/instance/non-existent-instance-id');
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should preview booking fare and baggage with cabin multipliers without locking seats', async () => {
+      const res = await request(app)
+        .post('/api/bookings/preview')
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 1,
+          cabinClass: 'BUSINESS',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.preview.cabinClass).toBe('BUSINESS');
+      // Adult base = 3000 * 1.8 = 5400
+      expect(res.body.preview.breakdown.baseAdultFare).toBe(5400);
+      // Child base = 1800 * 1.8 = 3240
+      expect(res.body.preview.breakdown.baseChildFare).toBe(3240);
+      // Taxes = 350 * 2 = 700
+      expect(res.body.preview.breakdown.taxesAndFees).toBe(700);
+      // Grand total = 5400 + 3240 + 700 = 9340
+      expect(res.body.preview.breakdown.grandTotal).toBe(9340);
+      expect(res.body.preview.baggage.cabin).toBe('12 Kg');
+      expect(res.body.preview.baggage.checkIn).toBe('30 Kg');
+    });
+
+    it('should reject fare preview if passenger count exceeds available seats', async () => {
+      const res = await request(app)
+        .post('/api/bookings/preview')
+        .send({
+          flightInstanceId,
+          adultCount: 999,
+          childCount: 0,
+          cabinClass: 'ECONOMY',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('remaining');
+    });
+
+    it('should create booking storing PNR, contact details, payment method, and passenger demographics', async () => {
+      const res = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          cabinClass: 'BUSINESS',
+          contactEmail: 'traveler@example.com',
+          contactPhone: '+91 9876543210',
+          paymentMethod: 'UPI',
+          passengers: [
+            {
+              name: 'Dr. Evelyn Carter',
+              type: 'ADULT',
+              gender: 'FEMALE',
+              age: 34,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.booking.pnr).toBeDefined();
+      expect(res.body.booking.pnr.length).toBeGreaterThanOrEqual(6);
+      expect(res.body.booking.cabinClass).toBe('BUSINESS');
+      expect(res.body.booking.contactEmail).toBe('traveler@example.com');
+      expect(res.body.booking.contactPhone).toBe('+91 9876543210');
+      expect(res.body.booking.paymentMethod).toBe('UPI');
+      expect(res.body.booking.passengers[0].gender).toBe('FEMALE');
+      expect(res.body.booking.passengers[0].age).toBe(34);
     });
   });
 

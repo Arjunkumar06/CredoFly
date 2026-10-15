@@ -150,6 +150,70 @@ export class FlightService {
   }
 
   /**
+   * Get specific dated flight departure instance with complete itinerary & policy details
+   */
+  static async getFlightInstanceById(id: string, adults = 1, children = 0) {
+    const inst = await prisma.flightInstance.findUnique({
+      where: { id },
+      include: {
+        flight: true,
+      },
+    });
+
+    if (!inst) {
+      throw new NotFoundError('Selected flight departure not found or no longer available.');
+    }
+
+    const adultFareNum = inst.adultFare.toNumber();
+    const childFareNum = inst.childFare.toNumber();
+    const totalFare = adultFareNum * adults + childFareNum * children;
+
+    // Calculate approximate duration
+    const [depH, depM] = inst.departureTime.split(':').map(Number);
+    const [arrH, arrM] = inst.arrivalTime.split(':').map(Number);
+    let durationMinutes = arrH * 60 + arrM - (depH * 60 + depM);
+    if (durationMinutes < 0) durationMinutes += 24 * 60; // Overnight flight
+    const hours = Math.floor(durationMinutes / 60);
+    const mins = durationMinutes % 60;
+    const durationStr = `${hours}h ${mins > 0 ? `${mins}m` : ''}`.trim() + ' Non-stop';
+
+    return {
+      id: inst.id,
+      flightId: inst.flightId,
+      flightCode: inst.flight.flightCode,
+      airlineName: 'CredoFly Express',
+      aircraft: 'Airbus A320neo',
+      origin: inst.flight.origin,
+      destination: inst.flight.destination,
+      capacity: inst.flight.capacity,
+      travelDate: inst.travelDate.toISOString().slice(0, 10),
+      departureTime: inst.departureTime,
+      arrivalTime: inst.arrivalTime,
+      adultFare: adultFareNum,
+      childFare: childFareNum,
+      totalFare,
+      availableSeats: inst.availableSeats,
+      duration: durationStr,
+      durationMinutes,
+      baggage: {
+        cabin: '7 Kg (1 piece per pax)',
+        checkIn: '15 Kg (1 piece per pax)',
+      },
+      policies: {
+        cancellation: {
+          moreThan72Hrs: '₹1,500 cancellation fee per passenger',
+          within72Hrs: '₹2,500 cancellation fee per passenger',
+          within4Hrs: 'Non-refundable within 4 hours of departure',
+        },
+        dateChange: {
+          moreThan72Hrs: '₹1,000 date change fee + fare difference',
+          within72Hrs: '₹2,000 date change fee + fare difference',
+        },
+      },
+    };
+  }
+
+  /**
    * Get single flight with schedules
    */
   static async getFlightById(id: string) {

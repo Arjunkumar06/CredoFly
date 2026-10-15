@@ -50,7 +50,59 @@ export interface Passenger {
   id?: string;
   name: string;
   type: 'ADULT' | 'CHILD';
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  age?: number;
   isCancelled?: boolean;
+}
+
+export interface FlightPolicies {
+  cancellation: {
+    moreThan72Hrs: string;
+    within72Hrs: string;
+    within4Hrs: string;
+  };
+  dateChange: {
+    moreThan72Hrs: string;
+    within72Hrs: string;
+  };
+}
+
+export interface FlightInstanceDetail extends SearchFlightResult {
+  airlineName: string;
+  aircraft: string;
+  durationMinutes: number;
+  baggage: {
+    cabin: string;
+    checkIn: string;
+  };
+  policies: FlightPolicies;
+}
+
+export interface BookingFarePreview {
+  flightInstanceId: string;
+  flightCode: string;
+  origin: string;
+  destination: string;
+  travelDate: string;
+  departureTime: string;
+  arrivalTime: string;
+  availableSeats: number;
+  adultCount: number;
+  childCount: number;
+  cabinClass: string;
+  breakdown: {
+    baseAdultFare: number;
+    baseChildFare: number;
+    adultSubtotal: number;
+    childSubtotal: number;
+    baseTotal: number;
+    taxesAndFees: number;
+    grandTotal: number;
+  };
+  baggage: {
+    cabin: string;
+    checkIn: string;
+  };
 }
 
 export interface BookingEvent {
@@ -64,6 +116,7 @@ export interface BookingEvent {
 export interface Booking {
   id: string;
   bookingReference: string;
+  pnr?: string | null;
   userId: string;
   user?: {
     id: string;
@@ -89,6 +142,11 @@ export interface Booking {
   };
   adultCount: number;
   childCount: number;
+  cabinClass?: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  paymentStatus?: string;
+  paymentMethod?: string | null;
   adultFareSnapshot: number | string;
   childFareSnapshot: number | string;
   totalAmount: number | string;

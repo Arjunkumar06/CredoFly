@@ -44,15 +44,32 @@ export const flightApi = {
     children: number;
   }) => api.get('/flights/search', { params }),
   getCities: () => api.get('/flights/cities'),
+  getInstanceById: (id: string, params?: { adults?: number; children?: number }) =>
+    api.get(`/flights/instance/${id}`, { params }),
   getById: (id: string) => api.get(`/flights/${id}`),
 };
 
 export const bookingApi = {
+  preview: (data: {
+    flightInstanceId: string;
+    adultCount: number;
+    childCount: number;
+    cabinClass?: string;
+  }) => api.post('/bookings/preview', data),
   create: (data: {
     flightInstanceId: string;
     adultCount: number;
     childCount: number;
-    passengers: Array<{ name: string; type: 'ADULT' | 'CHILD' }>;
+    cabinClass?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    paymentMethod?: string;
+    passengers: Array<{
+      name: string;
+      type: 'ADULT' | 'CHILD';
+      gender?: 'MALE' | 'FEMALE' | 'OTHER';
+      age?: number;
+    }>;
   }) => api.post('/bookings', data),
   getMyBookings: () => api.get('/bookings/me'),
   getById: (id: string) => api.get(`/bookings/${id}`),

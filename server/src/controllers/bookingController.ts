@@ -1,10 +1,24 @@
 import { Response, NextFunction } from 'express';
 import { BookingService } from '../services/bookingService.js';
 import { AuthRequest } from '../middleware/auth.js';
-import { createBookingSchema, partialCancelSchema } from '../validators/index.js';
+import { createBookingSchema, partialCancelSchema, bookingPreviewSchema } from '../validators/index.js';
 import { UnauthorizedError } from '../utils/errors.js';
 
 export class BookingController {
+  static async preview(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const validated = bookingPreviewSchema.parse(req.body);
+      const preview = await BookingService.previewBookingFare(validated);
+
+      return res.status(200).json({
+        success: true,
+        preview,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
@@ -18,6 +32,10 @@ export class BookingController {
         flightInstanceId: validated.flightInstanceId,
         adultCount: validated.adultCount,
         childCount: validated.childCount,
+        cabinClass: validated.cabinClass,
+        contactEmail: validated.contactEmail || undefined,
+        contactPhone: validated.contactPhone || undefined,
+        paymentMethod: validated.paymentMethod,
         passengers: validated.passengers,
       });
 

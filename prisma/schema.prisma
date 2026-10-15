@@ -77,12 +77,18 @@ model FlightInstance {
 model Booking {
   id                String         @id @default(uuid())
   bookingReference  String         @unique // e.g., CF2026101501
+  pnr               String?        // e.g., CF-PNR-83921
   userId            String
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   flightInstanceId  String
   flightInstance    FlightInstance @relation(fields: [flightInstanceId], references: [id], onDelete: Restrict)
   adultCount        Int
   childCount        Int
+  cabinClass        String         @default("ECONOMY") // ECONOMY, PREMIUM_ECONOMY, BUSINESS
+  contactEmail      String?
+  contactPhone      String?
+  paymentStatus     String         @default("CONFIRMED") // CONFIRMED, PENDING_PAYMENT, PAYMENT_FAILED, REFUNDED
+  paymentMethod     String?        // CARD, UPI, NET_BANKING, DEMO_PAY
   adultFareSnapshot Decimal        @db.Decimal(10, 2)
   childFareSnapshot Decimal        @db.Decimal(10, 2)
   totalAmount       Decimal        @db.Decimal(10, 2)
@@ -104,6 +110,8 @@ model Passenger {
   booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   name        String
   type        String   // "ADULT" or "CHILD"
+  gender      String?  // "MALE", "FEMALE", "OTHER"
+  age         Int?
   isCancelled Boolean  @default(false)
   createdAt   DateTime @default(now())
 

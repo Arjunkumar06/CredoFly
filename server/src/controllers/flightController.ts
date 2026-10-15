@@ -37,6 +37,21 @@ export class FlightController {
     }
   }
 
+  static async getInstanceById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const adults = req.query.adults ? Number(req.query.adults) : 1;
+      const children = req.query.children ? Number(req.query.children) : 0;
+      const flight = await FlightService.getFlightInstanceById(id, adults, children);
+      return res.status(200).json({
+        success: true,
+        flight,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getFlightById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = req.params.id as string;

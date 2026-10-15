@@ -4,6 +4,74 @@ import { Prisma } from '@prisma/client';
 
 export class BookingService {
   /**
+   * Preview booking fare and availability without reserving seats
+   */
+  static async previewBookingFare(params: {
+    flightInstanceId: string;
+    adultCount: number;
+    childCount: number;
+    cabinClass?: string;
+  }) {
+    const { flightInstanceId, adultCount, childCount, cabinClass = 'ECONOMY' } = params;
+    const totalPassengers = adultCount + childCount;
+
+    const instance = await prisma.flightInstance.findUnique({
+      where: { id: flightInstanceId },
+      include: { flight: true },
+    });
+
+    if (!instance) {
+      throw new NotFoundError('Flight departure not found');
+    }
+
+    if (instance.availableSeats < totalPassengers) {
+      throw new BadRequestError(`Only ${instance.availableSeats} seat(s) remaining on this flight.`);
+    }
+
+    let multiplier = 1.0;
+    if (cabinClass === 'PREMIUM_ECONOMY') multiplier = 1.25;
+    if (cabinClass === 'BUSINESS') multiplier = 1.8;
+
+    const baseAdultFare = Math.round(instance.adultFare.toNumber() * multiplier);
+    const baseChildFare = Math.round(instance.childFare.toNumber() * multiplier);
+
+    const adultSubtotal = baseAdultFare * adultCount;
+    const childSubtotal = baseChildFare * childCount;
+    const baseTotal = adultSubtotal + childSubtotal;
+
+    // Standard aviation taxes & airport fees (e.g., ₹350 per pax)
+    const taxesAndFees = 350 * totalPassengers;
+    const grandTotal = baseTotal + taxesAndFees;
+
+    return {
+      flightInstanceId,
+      flightCode: instance.flight.flightCode,
+      origin: instance.flight.origin,
+      destination: instance.flight.destination,
+      travelDate: instance.travelDate.toISOString().slice(0, 10),
+      departureTime: instance.departureTime,
+      arrivalTime: instance.arrivalTime,
+      availableSeats: instance.availableSeats,
+      adultCount,
+      childCount,
+      cabinClass,
+      breakdown: {
+        baseAdultFare,
+        baseChildFare,
+        adultSubtotal,
+        childSubtotal,
+        baseTotal,
+        taxesAndFees,
+        grandTotal,
+      },
+      baggage: {
+        cabin: cabinClass === 'BUSINESS' ? '12 Kg' : '7 Kg',
+        checkIn: cabinClass === 'BUSINESS' ? '30 Kg' : cabinClass === 'PREMIUM_ECONOMY' ? '20 Kg' : '15 Kg',
+      },
+    };
+  }
+
+  /**
    * Concurrency-safe booking creation using database transactions & atomic inventory decrement
    */
   static async createBooking(params: {
@@ -11,9 +79,28 @@ export class BookingService {
     flightInstanceId: string;
     adultCount: number;
     childCount: number;
-    passengers: Array<{ name: string; type: 'ADULT' | 'CHILD' }>;
+    cabinClass?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    paymentMethod?: string;
+    passengers: Array<{
+      name: string;
+      type: 'ADULT' | 'CHILD';
+      gender?: 'MALE' | 'FEMALE' | 'OTHER';
+      age?: number;
+    }>;
   }) {
-    const { userId, flightInstanceId, adultCount, childCount, passengers } = params;
+    const {
+      userId,
+      flightInstanceId,
+      adultCount,
+      childCount,
+      cabinClass = 'ECONOMY',
+      contactEmail,
+      contactPhone,
+      paymentMethod = 'DEMO_PAY',
+      passengers,
+    } = params;
     const totalPassengers = adultCount + childCount;
 
     if (totalPassengers <= 0) {
@@ -50,32 +137,46 @@ export class BookingService {
       }
 
       // 3. Trusted server-side fare calculation
-      const adultFare = instance.adultFare.toNumber();
-      const childFare = instance.childFare.toNumber();
-      const totalAmount = new Prisma.Decimal(adultFare * adultCount + childFare * childCount);
+      let multiplier = 1.0;
+      if (cabinClass === 'PREMIUM_ECONOMY') multiplier = 1.25;
+      if (cabinClass === 'BUSINESS') multiplier = 1.8;
 
-      // 4. Generate unique readable booking reference: e.g. CF2026101501
+      const adultFare = Math.round(instance.adultFare.toNumber() * multiplier);
+      const childFare = Math.round(instance.childFare.toNumber() * multiplier);
+      const taxesAndFees = 350 * totalPassengers;
+      const totalAmount = new Prisma.Decimal(adultFare * adultCount + childFare * childCount + taxesAndFees);
+
+      // 4. Generate unique readable booking reference & PNR: e.g. CF2026101501
       const now = new Date();
       const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const bookingReference = `CF${datePart}${randomSuffix}`;
+      const pnr = `CF${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
       // 5. Create booking with passenger records
       const booking = await tx.booking.create({
         data: {
           bookingReference,
+          pnr,
           userId,
           flightInstanceId,
           adultCount,
           childCount,
-          adultFareSnapshot: instance.adultFare,
-          childFareSnapshot: instance.childFare,
+          cabinClass,
+          contactEmail: contactEmail || null,
+          contactPhone: contactPhone || null,
+          paymentStatus: 'CONFIRMED',
+          paymentMethod,
+          adultFareSnapshot: new Prisma.Decimal(adultFare),
+          childFareSnapshot: new Prisma.Decimal(childFare),
           totalAmount,
           status: 'CONFIRMED',
           passengers: {
             create: passengers.map((p) => ({
               name: p.name.trim(),
               type: p.type,
+              gender: p.gender || null,
+              age: p.age || null,
               isCancelled: false,
             })),
           },
@@ -83,7 +184,7 @@ export class BookingService {
             create: [
               {
                 eventType: 'CREATED',
-                details: `Booking created with ${adultCount} Adult(s) and ${childCount} Child(ren). Total: ₹${totalAmount.toFixed(2)}`,
+                details: `Booking confirmed with ${adultCount} Adult(s) and ${childCount} Child(ren) (${cabinClass}). Payment method: ${paymentMethod}. Total: ₹${totalAmount.toFixed(2)}`,
               },
             ],
           },

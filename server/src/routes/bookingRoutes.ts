@@ -4,7 +4,10 @@ import { requireCustomerAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// All customer booking endpoints require customer authentication
+// Booking preview is accessible to calculate verified server fares
+router.post('/preview', BookingController.preview);
+
+// State-changing or authenticated customer booking endpoints require customer authentication
 router.use(requireCustomerAuth);
 
 router.post('/', BookingController.create);
