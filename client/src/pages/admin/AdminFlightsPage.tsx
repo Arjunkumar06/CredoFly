@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plane, Plus, Edit, Check, X, AlertCircle, Save } from 'lucide-react';
+import { Plane, Plus, Edit, Check, X, AlertCircle, Save, Calendar } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import { Flight } from '../../types';
 
@@ -31,6 +31,26 @@ export const AdminFlightsPage: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [schedules, setSchedules] = useState<ScheduleFormRow[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingSchedules, setIsGeneratingSchedules] = useState(false);
+
+  const handleGenerateSchedules = async () => {
+    setIsGeneratingSchedules(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await adminApi.generateSchedules(365);
+      if (res.data.success) {
+        setSuccessMsg(
+          `Idempotently generated ${res.data.generatedCount} dated flight departures across the fleet for the next 12 months.`
+        );
+        loadFlights();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to generate 12-month schedules.');
+    } finally {
+      setIsGeneratingSchedules(false);
+    }
+  };
 
   useEffect(() => {
     loadFlights();
@@ -183,7 +203,17 @@ export const AdminFlightsPage: React.FC = () => {
             Manage commercial flights, capacities, routes, and day-by-day weekly departure schedules.
           </p>
         </div>
-        <div>
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            disabled={isGeneratingSchedules}
+            onClick={handleGenerateSchedules}
+            className="inline-flex items-center space-x-2 px-4 py-2 border border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs sm:text-sm rounded-xl transition"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>{isGeneratingSchedules ? 'Generating 365 Days...' : 'Generate 12-Month Schedules'}</span>
+          </button>
+
           <button
             onClick={initNewFlightForm}
             className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-sm transition"

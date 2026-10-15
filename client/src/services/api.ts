@@ -31,6 +31,10 @@ api.interceptors.request.use((config) => {
 export const authApi = {
   register: (data: any) => api.post('/auth/register', data),
   login: (data: any) => api.post('/auth/login', data),
+  google: (data: { credential?: string; token?: string; email?: string; name?: string }) =>
+    api.post('/auth/google', data),
+  recoverCustomerId: (data: { identifier: string }) =>
+    api.post('/auth/recover-customer-id', data),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
 };
@@ -46,6 +50,9 @@ export const flightApi = {
   getCities: () => api.get('/flights/cities'),
   getInstanceById: (id: string, params?: { adults?: number; children?: number }) =>
     api.get(`/flights/instance/${id}`, { params }),
+  getSeatMap: (instanceId: string) => api.get(`/flights/instance/${instanceId}/seats`),
+  getLowFareCalendar: (origin: string, destination: string, startDate?: string, days?: number) =>
+    api.get('/flights/low-fare-calendar', { params: { origin, destination, startDate, days } }),
   getById: (id: string) => api.get(`/flights/${id}`),
 };
 
@@ -69,15 +76,27 @@ export const bookingApi = {
       type: 'ADULT' | 'CHILD';
       gender?: 'MALE' | 'FEMALE' | 'OTHER';
       age?: number;
+      seatNumber?: string;
+      seatPrice?: number;
     }>;
   }) => api.post('/bookings', data),
   getMyBookings: () => api.get('/bookings/me'),
   getById: (id: string) => api.get(`/bookings/${id}`),
+  getCancellationQuote: (id: string) => api.get(`/bookings/${id}/cancellation-quote`),
   cancel: (id: string) => api.post(`/bookings/${id}/cancel`),
   partialCancel: (
     id: string,
     data: { cancelAdults: number; cancelChildren: number }
   ) => api.post(`/bookings/${id}/partial-cancel`, data),
+  submitFeedback: (id: string, data: { rating: number; comment?: string }) =>
+    api.post(`/bookings/${id}/feedback`, data),
+};
+
+export const paymentApi = {
+  getConfig: () => api.get('/payment/config'),
+  submitUtr: (data: { bookingId: string; transactionRef: string; paymentMethod?: string }) =>
+    api.post('/payment/submit-utr', data),
+  getStatus: (bookingId: string) => api.get(`/payment/status/${bookingId}`),
 };
 
 export const adminApi = {
@@ -98,6 +117,19 @@ export const adminApi = {
   }) => api.get('/admin/bookings', { params }),
   getBookingDetails: (id: string) => api.get(`/admin/bookings/${id}`),
   cancelBooking: (id: string) => api.post(`/admin/bookings/${id}/cancel`),
+  // Extended operations
+  generateSchedules: (days?: number) => api.post('/admin/schedules/generate', { days }),
+  getPayments: (params?: { status?: string }) => api.get('/admin/payments', { params }),
+  verifyPayment: (id: string, data: { status: 'VERIFIED' | 'REJECTED'; adminNotes?: string }) =>
+    api.post(`/admin/payments/${id}/verify`, data),
+  updatePaymentConfig: (data: any) => api.patch('/admin/payments/config', data),
+  getHolidays: () => api.get('/admin/pricing/holidays'),
+  createHoliday: (data: any) => api.post('/admin/pricing/holidays', data),
+  deleteHoliday: (id: string) => api.delete(`/admin/pricing/holidays/${id}`),
+  getPricingRules: () => api.get('/admin/pricing/rules'),
+  createPricingRule: (data: any) => api.post('/admin/pricing/rules', data),
+  updatePricingRule: (id: string, data: any) => api.patch(`/admin/pricing/rules/${id}`, data),
+  deletePricingRule: (id: string) => api.delete(`/admin/pricing/rules/${id}`),
 };
 
 export default api;

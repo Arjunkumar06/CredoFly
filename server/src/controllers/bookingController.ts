@@ -1,7 +1,15 @@
 import { Response, NextFunction } from 'express';
 import { BookingService } from '../services/bookingService.js';
+import { SeatService } from '../services/seatService.js';
+import { CancellationService } from '../services/cancellationService.js';
 import { AuthRequest } from '../middleware/auth.js';
-import { createBookingSchema, partialCancelSchema, bookingPreviewSchema } from '../validators/index.js';
+import {
+  createBookingSchema,
+  partialCancelSchema,
+  bookingPreviewSchema,
+  seatSelectionSchema,
+  feedbackSchema,
+} from '../validators/index.js';
 import { UnauthorizedError } from '../utils/errors.js';
 
 export class BookingController {
@@ -43,6 +51,102 @@ export class BookingController {
         success: true,
         message: 'Booking confirmed successfully',
         booking,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async reserveSeats(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const bookingId = req.params.id as string;
+      const { assignments, flightInstanceId } = seatSelectionSchema.parse({
+        bookingId,
+        ...req.body,
+      });
+
+      const result = await SeatService.reserveSeats({
+        flightInstanceId,
+        bookingId,
+        assignments,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Seats reserved successfully',
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getCancellationQuote(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const id = req.params.id as string;
+      const quote = await CancellationService.getCancellationQuote(id, req.user.userId, false);
+
+      return res.status(200).json({
+        success: true,
+        quote,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async cancelWithTierRefund(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const id = req.params.id as string;
+      const result = await CancellationService.cancelBookingWithTierRefund(id, req.user.userId, false);
+
+      return res.status(200).json({
+        success: true,
+        message: `Booking cancelled successfully under tier policy. Refund of ₹${result.refundAmount.toLocaleString('en-IN')} initiated.`,
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async submitFeedback(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const validated = feedbackSchema.parse({
+        bookingId: req.params.id,
+        ...req.body,
+      });
+
+      const feedback = await BookingService.submitFeedback({
+        bookingId: validated.bookingId,
+        userId: req.user.userId,
+        rating: validated.rating,
+        punctualityRating: validated.punctualityRating,
+        serviceRating: validated.serviceRating,
+        cleanlinessRating: validated.cleanlinessRating,
+        comment: validated.comment,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Thank you for your valuable feedback! We appreciate you flying with CredoFly.',
+        feedback,
       });
     } catch (error) {
       next(error);

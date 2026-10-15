@@ -8,6 +8,8 @@ import {
   Shield,
   Calendar,
   ExternalLink,
+  CreditCard,
+  TrendingUp,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
@@ -46,6 +48,8 @@ export const AdminLayout: React.FC = () => {
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Flights', path: '/admin/flights', icon: Plane },
     { label: 'Bookings', path: '/admin/bookings', icon: Ticket },
+    { label: 'Payments Queue', path: '/admin/payments', icon: CreditCard },
+    { label: 'Pricing & Holidays', path: '/admin/pricing', icon: TrendingUp },
   ];
 
   const isActive = (path: string) => location.pathname === path;

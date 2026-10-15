@@ -21,6 +21,8 @@ import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
 import { AdminFlightsPage } from './pages/admin/AdminFlightsPage';
 import { AdminBookingsPage } from './pages/admin/AdminBookingsPage';
 import { AdminBookingDetailsPage } from './pages/admin/AdminBookingDetailsPage';
+import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
+import { AdminPricingPage } from './pages/admin/AdminPricingPage';
 
 export const App: React.FC = () => {
   return (
@@ -47,6 +49,8 @@ export const App: React.FC = () => {
         <Route path="flights" element={<AdminFlightsPage />} />
         <Route path="bookings" element={<AdminBookingsPage />} />
         <Route path="bookings/:id" element={<AdminBookingDetailsPage />} />
+        <Route path="payments" element={<AdminPaymentsPage />} />
+        <Route path="pricing" element={<AdminPricingPage />} />
       </Route>
 
       {/* Fallback */}

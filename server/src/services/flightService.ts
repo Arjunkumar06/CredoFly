@@ -399,6 +399,165 @@ export class FlightService {
   }
 
   /**
+   * Idempotent 12-Month Flight Schedule Generator from configured weekly schedules
+   */
+  static async generateYearlySchedule(params?: { startDate?: Date; monthsAhead?: number }) {
+    const start = params?.startDate || new Date();
+    start.setHours(0, 0, 0, 0);
+    const months = params?.monthsAhead || 12;
+
+    const endDate = new Date(start);
+    endDate.setMonth(endDate.getMonth() + months);
+
+    // Fetch active flights with operating weekly schedules
+    const flights = await prisma.flight.findMany({
+      where: { isActive: true },
+      include: {
+        schedules: {
+          where: { isOperating: true },
+        },
+      },
+    });
+
+    // Fetch schedule-affecting holidays
+    const scheduleHolidays = await prisma.holiday.findMany({
+      where: {
+        affectsSchedule: true,
+        date: { gte: start, lte: endDate },
+      },
+    });
+    const holidayDateSet = new Set(scheduleHolidays.map((h) => h.date.toISOString().slice(0, 10)));
+
+    let generatedCount = 0;
+    let skippedCount = 0;
+
+    const instancesToCreate = [];
+
+    const cur = new Date(start);
+    while (cur <= endDate) {
+      const travelDate = new Date(cur);
+      const dateStr = travelDate.toISOString().slice(0, 10);
+      const dayOfWeek = travelDate.getDay();
+
+      if (holidayDateSet.has(dateStr)) {
+        skippedCount++;
+        cur.setDate(cur.getDate() + 1);
+        continue;
+      }
+
+      for (const flight of flights) {
+        const matchingSchedules = flight.schedules.filter((s) => s.dayOfWeek === dayOfWeek);
+
+        for (const s of matchingSchedules) {
+          // Check effective dates if present
+          if (s.effectiveStartDate && travelDate < s.effectiveStartDate) continue;
+          if (s.effectiveEndDate && travelDate > s.effectiveEndDate) continue;
+
+          instancesToCreate.push({
+            flightId: flight.id,
+            scheduleId: s.id,
+            travelDate,
+            departureTime: s.departureTime,
+            arrivalTime: s.arrivalTime,
+            adultFare: s.adultFare,
+            childFare: s.childFare,
+            availableSeats: flight.capacity,
+          });
+        }
+      }
+
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // High performance batch insertion
+    const chunkSize = 1000;
+    for (let i = 0; i < instancesToCreate.length; i += chunkSize) {
+      const chunk = instancesToCreate.slice(i, i + chunkSize);
+      const res = await prisma.flightInstance.createMany({
+        data: chunk,
+        skipDuplicates: true,
+      });
+      generatedCount += res.count;
+    }
+
+    return {
+      success: true,
+      monthsCovered: months,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: endDate.toISOString().slice(0, 10),
+      totalInstancesCheckedOrCreated: generatedCount,
+      holidaysSkipped: skippedCount,
+    };
+  }
+
+  /**
+   * Low-Fare Calendar for route over a specified month (or next 30 days)
+   */
+  static async getLowFareCalendar(params: {
+    origin: string;
+    destination: string;
+    yearMonth?: string; // YYYY-MM
+  }) {
+    const { origin, destination, yearMonth } = params;
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (yearMonth) {
+      const [y, m] = yearMonth.split('-').map(Number);
+      startDate = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      endDate = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+    } else {
+      const today = new Date();
+      startDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0));
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 30);
+    }
+
+    // Ensure schedules are generated for this window
+    await FlightService.generateYearlySchedule({ startDate, monthsAhead: 1 });
+
+    const instances = await prisma.flightInstance.findMany({
+      where: {
+        travelDate: { gte: startDate, lte: endDate },
+        flight: {
+          isActive: true,
+          origin: { contains: origin.trim(), mode: 'insensitive' },
+          destination: { contains: destination.trim(), mode: 'insensitive' },
+        },
+        availableSeats: { gt: 0 },
+      },
+      include: {
+        flight: true,
+      },
+      orderBy: [{ travelDate: 'asc' }, { adultFare: 'asc' }],
+    });
+
+    const calendarMap: Record<string, { date: string; lowestFare: number; flightCount: number; available: boolean }> = {};
+
+    for (const inst of instances) {
+      const dStr = inst.travelDate.toISOString().slice(0, 10);
+      const fare = inst.adultFare.toNumber();
+
+      if (!calendarMap[dStr]) {
+        calendarMap[dStr] = {
+          date: dStr,
+          lowestFare: fare,
+          flightCount: 1,
+          available: true,
+        };
+      } else {
+        calendarMap[dStr].flightCount++;
+        if (fare < calendarMap[dStr].lowestFare) {
+          calendarMap[dStr].lowestFare = fare;
+        }
+      }
+    }
+
+    return Object.values(calendarMap);
+  }
+
+  /**
    * Get unique routes and cities for search dropdowns
    */
   static async getCitiesAndRoutes() {
@@ -413,3 +572,4 @@ export class FlightService {
     return { origins, destinations };
   }
 }
+

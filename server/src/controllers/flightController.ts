@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { FlightService } from '../services/flightService.js';
+import { SeatService } from '../services/seatService.js';
 import { searchFlightsSchema } from '../validators/index.js';
 
 export class FlightController {
@@ -46,6 +47,53 @@ export class FlightController {
       return res.status(200).json({
         success: true,
         flight,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getSeats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const seatMap = await SeatService.getSeatMapForInstance(id);
+      return res.status(200).json({
+        success: true,
+        ...seatMap,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getCalendar(req: Request, res: Response, next: NextFunction) {
+    try {
+      const origin = (req.query.origin as string) || '';
+      const destination = (req.query.destination as string) || '';
+      const yearMonth = req.query.month as string | undefined;
+
+      const calendar = await FlightService.getLowFareCalendar({
+        origin,
+        destination,
+        yearMonth,
+      });
+
+      return res.status(200).json({
+        success: true,
+        calendar,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async generateSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const months = req.body.months ? Number(req.body.months) : 12;
+      const result = await FlightService.generateYearlySchedule({ monthsAhead: months });
+      return res.status(200).json({
+        ...result,
+        message: `Successfully generated ${result.monthsCovered} months of flight schedules.`,
       });
     } catch (error) {
       next(error);

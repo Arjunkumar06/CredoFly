@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { flightApi } from '../../services/api';
 import { SearchFlightResult } from '../../types';
+import { LowFareCalendarBar } from '../../components/flights/LowFareCalendarBar';
 
 export const SearchResultsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -242,6 +243,23 @@ export const SearchResultsPage: React.FC = () => {
             </form>
           )}
         </div>
+
+        {/* Low-Fare Date Carousel / Matrix */}
+        <LowFareCalendarBar
+          origin={origin}
+          destination={destination}
+          selectedDate={travelDate}
+          onSelectDate={(newDate) => {
+            setSearchParams({
+              origin,
+              destination,
+              travelDate: newDate,
+              adults: adults.toString(),
+              children: children.toString(),
+              class: cabinClass,
+            });
+          }}
+        />
 
         {/* MakeMyTrip-Style Filter & Sorting Bar */}
         {!isLoading && rawFlights.length > 0 && (

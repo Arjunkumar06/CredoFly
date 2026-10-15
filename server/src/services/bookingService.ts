@@ -1,23 +1,30 @@
 import { prisma } from '../db.js';
-import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors.js';
+import { BadRequestError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors.js';
 import { Prisma } from '@prisma/client';
+import { NotificationService } from './notificationService.js';
+import { PricingService } from './pricingService.js';
 
 export class BookingService {
   /**
-   * Preview booking fare and availability without reserving seats
+   * Preview booking fare, seat charges, baggage, and availability without reserving inventory
    */
   static async previewBookingFare(params: {
     flightInstanceId: string;
     adultCount: number;
     childCount: number;
     cabinClass?: string;
+    selectedSeats?: string[];
   }) {
-    const { flightInstanceId, adultCount, childCount, cabinClass = 'ECONOMY' } = params;
+    const { flightInstanceId, adultCount, childCount, cabinClass = 'ECONOMY', selectedSeats = [] } = params;
     const totalPassengers = adultCount + childCount;
 
     const instance = await prisma.flightInstance.findUnique({
       where: { id: flightInstanceId },
-      include: { flight: true },
+      include: {
+        flight: {
+          include: { aircraftConfig: true },
+        },
+      },
     });
 
     if (!instance) {
@@ -28,20 +35,39 @@ export class BookingService {
       throw new BadRequestError(`Only ${instance.availableSeats} seat(s) remaining on this flight.`);
     }
 
-    let multiplier = 1.0;
-    if (cabinClass === 'PREMIUM_ECONOMY') multiplier = 1.25;
-    if (cabinClass === 'BUSINESS') multiplier = 1.8;
+    // Dynamic pricing adjustment (Holiday / Weekend / Peak rules)
+    const pricing = await PricingService.calculateDynamicMultiplier({
+      travelDate: instance.travelDate,
+      route: `${instance.flight.origin}-${instance.flight.destination}`,
+      cabinClass,
+    });
 
-    const baseAdultFare = Math.round(instance.adultFare.toNumber() * multiplier);
-    const baseChildFare = Math.round(instance.childFare.toNumber() * multiplier);
+    const baseAdultFare = Math.round(instance.adultFare.toNumber() * pricing.baseMultiplier);
+    const baseChildFare = Math.round(instance.childFare.toNumber() * pricing.baseMultiplier);
 
     const adultSubtotal = baseAdultFare * adultCount;
     const childSubtotal = baseChildFare * childCount;
     const baseTotal = adultSubtotal + childSubtotal;
 
-    // Standard aviation taxes & airport fees (e.g., ₹350 per pax)
+    // Standard aviation taxes & airport fees (₹350 per passenger)
     const taxesAndFees = 350 * totalPassengers;
-    const grandTotal = baseTotal + taxesAndFees;
+
+    // Seat charges calculation if specific seats are selected
+    let seatCharges = 0;
+    if (selectedSeats && selectedSeats.length > 0) {
+      const seats = await prisma.flightSeat.findMany({
+        where: {
+          flightInstanceId,
+          seatNumber: { in: selectedSeats },
+        },
+      });
+
+      for (const s of seats) {
+        seatCharges += s.price.toNumber();
+      }
+    }
+
+    const grandTotal = baseTotal + taxesAndFees + seatCharges;
 
     return {
       flightInstanceId,
@@ -62,7 +88,9 @@ export class BookingService {
         childSubtotal,
         baseTotal,
         taxesAndFees,
+        seatCharges,
         grandTotal,
+        appliedRules: pricing.appliedRules,
       },
       baggage: {
         cabin: cabinClass === 'BUSINESS' ? '12 Kg' : '7 Kg',
@@ -88,6 +116,7 @@ export class BookingService {
       type: 'ADULT' | 'CHILD';
       gender?: 'MALE' | 'FEMALE' | 'OTHER';
       age?: number;
+      seatNumber?: string;
     }>;
   }) {
     const {
@@ -111,7 +140,7 @@ export class BookingService {
       throw new BadRequestError('Passenger count does not match the provided passenger list.');
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Atomic decrement of available seats with capacity guard condition
       const updateResult = await tx.$executeRaw`
         UPDATE flight_instances
@@ -140,11 +169,33 @@ export class BookingService {
       let multiplier = 1.0;
       if (cabinClass === 'PREMIUM_ECONOMY') multiplier = 1.25;
       if (cabinClass === 'BUSINESS') multiplier = 1.8;
+      if (cabinClass === 'FIRST_CLASS') multiplier = 2.5;
 
       const adultFare = Math.round(instance.adultFare.toNumber() * multiplier);
       const childFare = Math.round(instance.childFare.toNumber() * multiplier);
       const taxesAndFees = 350 * totalPassengers;
-      const totalAmount = new Prisma.Decimal(adultFare * adultCount + childFare * childCount + taxesAndFees);
+
+      // Calculate seat charges if seats are assigned
+      let seatCharges = 0;
+      const seatNumbers = passengers.filter((p) => p.seatNumber).map((p) => p.seatNumber!.toUpperCase().trim());
+
+      if (seatNumbers.length > 0) {
+        for (const sNum of seatNumbers) {
+          const seatRecord = await tx.flightSeat.findUnique({
+            where: {
+              flightInstanceId_seatNumber: {
+                flightInstanceId,
+                seatNumber: sNum,
+              },
+            },
+          });
+          if (seatRecord) {
+            seatCharges += seatRecord.price.toNumber();
+          }
+        }
+      }
+
+      const totalAmount = new Prisma.Decimal(adultFare * adultCount + childFare * childCount + taxesAndFees + seatCharges);
 
       // 4. Generate unique readable booking reference & PNR: e.g. CF2026101501
       const now = new Date();
@@ -152,6 +203,8 @@ export class BookingService {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const bookingReference = `CF${datePart}${randomSuffix}`;
       const pnr = `CF${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      const initialPaymentStatus = paymentMethod === 'GPAY_QR' ? 'PENDING_VERIFICATION' : 'CONFIRMED';
 
       // 5. Create booking with passenger records
       const booking = await tx.booking.create({
@@ -165,10 +218,11 @@ export class BookingService {
           cabinClass,
           contactEmail: contactEmail || null,
           contactPhone: contactPhone || null,
-          paymentStatus: 'CONFIRMED',
+          paymentStatus: initialPaymentStatus,
           paymentMethod,
           adultFareSnapshot: new Prisma.Decimal(adultFare),
           childFareSnapshot: new Prisma.Decimal(childFare),
+          seatCharges: new Prisma.Decimal(seatCharges),
           totalAmount,
           status: 'CONFIRMED',
           passengers: {
@@ -177,6 +231,7 @@ export class BookingService {
               type: p.type,
               gender: p.gender || null,
               age: p.age || null,
+              seatNumber: p.seatNumber || null,
               isCancelled: false,
             })),
           },
@@ -184,7 +239,7 @@ export class BookingService {
             create: [
               {
                 eventType: 'CREATED',
-                details: `Booking confirmed with ${adultCount} Adult(s) and ${childCount} Child(ren) (${cabinClass}). Payment method: ${paymentMethod}. Total: ₹${totalAmount.toFixed(2)}`,
+                details: `Booking created with ${adultCount} Adult(s), ${childCount} Child(ren) (${cabinClass}). Payment method: ${paymentMethod}. Total: ₹${totalAmount.toFixed(2)}.`,
               },
             ],
           },
@@ -198,8 +253,58 @@ export class BookingService {
         },
       });
 
+      // 6. Lock assigned seats to this booking and passengers
+      for (const p of booking.passengers) {
+        if (p.seatNumber) {
+          await tx.flightSeat.updateMany({
+            where: {
+              flightInstanceId,
+              seatNumber: p.seatNumber,
+            },
+            data: {
+              status: 'OCCUPIED',
+              bookingId: booking.id,
+              passengerId: p.id,
+            },
+          });
+        }
+      }
+
+      // 7. If GPAY_QR, initialize a Payment record in PENDING_VERIFICATION
+      if (paymentMethod === 'GPAY_QR') {
+        await tx.payment.create({
+          data: {
+            bookingId: booking.id,
+            amount: totalAmount,
+            method: 'GPAY_QR',
+            status: 'PENDING_VERIFICATION',
+          },
+        });
+      }
+
       return booking;
     });
+
+    if (paymentMethod !== 'GPAY_QR') {
+      try {
+        await NotificationService.notifyBookingConfirmation({
+          email: result.contactEmail,
+          phone: result.contactPhone,
+          bookingReference: result.bookingReference,
+          pnr: result.pnr,
+          flightCode: result.flightInstance.flight.flightCode,
+          origin: result.flightInstance.flight.origin,
+          destination: result.flightInstance.flight.destination,
+          travelDate: result.flightInstance.travelDate.toISOString().slice(0, 10),
+          departureTime: result.flightInstance.departureTime,
+          totalAmount: result.totalAmount.toNumber().toLocaleString('en-IN'),
+        });
+      } catch (e) {
+        console.warn('Booking confirmation notification error:', e);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -213,6 +318,9 @@ export class BookingService {
           include: { flight: true },
         },
         passengers: true,
+        payments: true,
+        cancellations: true,
+        feedback: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -241,12 +349,16 @@ export class BookingService {
       where: { id: bookingId },
       include: {
         user: {
-          select: { id: true, username: true, email: true },
+          select: { id: true, name: true, username: true, email: true, customerId: true, mobileNumber: true },
         },
         flightInstance: {
           include: { flight: true },
         },
         passengers: true,
+        seats: true,
+        payments: true,
+        cancellations: true,
+        feedback: true,
         auditEvents: {
           orderBy: { createdAt: 'desc' },
         },
@@ -265,7 +377,54 @@ export class BookingService {
   }
 
   /**
-   * Cancel entire booking and release inventory
+   * Customer submits flight review and ratings post-journey
+   */
+  static async submitFeedback(params: {
+    bookingId: string;
+    userId: string;
+    rating: number;
+    punctualityRating?: number;
+    serviceRating?: number;
+    cleanlinessRating?: number;
+    comment?: string;
+  }) {
+    const { bookingId, userId, rating, punctualityRating, serviceRating, cleanlinessRating, comment } = params;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      throw new NotFoundError('Booking not found');
+    }
+
+    if (booking.userId !== userId) {
+      throw new ForbiddenError('You can only submit feedback for your own bookings.');
+    }
+
+    const existingFeedback = await prisma.feedback.findUnique({
+      where: { bookingId },
+    });
+
+    if (existingFeedback) {
+      throw new ConflictError('Feedback has already been submitted for this booking.');
+    }
+
+    return prisma.feedback.create({
+      data: {
+        bookingId,
+        userId,
+        rating,
+        punctualityRating,
+        serviceRating,
+        cleanlinessRating,
+        comment,
+      },
+    });
+  }
+
+  /**
+   * Cancel entire booking and release inventory (legacy or direct)
    */
   static async cancelEntireBooking(bookingId: string, userId: string, isAdmin = false) {
     return prisma.$transaction(async (tx) => {
@@ -297,6 +456,16 @@ export class BookingService {
           WHERE id = ${booking.flightInstanceId}
         `;
       }
+
+      // Release any assigned visual seats
+      await tx.flightSeat.updateMany({
+        where: { bookingId },
+        data: {
+          status: 'AVAILABLE',
+          bookingId: null,
+          passengerId: null,
+        },
+      });
 
       // Mark all passengers cancelled
       await tx.passenger.updateMany({
@@ -407,6 +576,12 @@ export class BookingService {
             where: { id: p.id },
             data: { isCancelled: true },
           });
+          if (p.seatNumber) {
+            await tx.flightSeat.updateMany({
+              where: { bookingId, seatNumber: p.seatNumber },
+              data: { status: 'AVAILABLE', bookingId: null, passengerId: null },
+            });
+          }
         }
       }
 
@@ -419,6 +594,12 @@ export class BookingService {
             where: { id: p.id },
             data: { isCancelled: true },
           });
+          if (p.seatNumber) {
+            await tx.flightSeat.updateMany({
+              where: { bookingId, seatNumber: p.seatNumber },
+              data: { status: 'AVAILABLE', bookingId: null, passengerId: null },
+            });
+          }
         }
       }
 

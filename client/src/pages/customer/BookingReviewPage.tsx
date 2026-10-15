@@ -16,12 +16,14 @@ import {
   Phone,
   Mail,
   Luggage,
+  Sparkles,
 } from 'lucide-react';
-import { flightApi, bookingApi } from '../../services/api';
+import { flightApi, bookingApi, paymentApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { FlightInstanceDetail, BookingFarePreview, Passenger } from '../../types';
 import { BookingStepper } from '../../components/booking/BookingStepper';
 import { PaymentGatewayModal } from '../../components/booking/PaymentGatewayModal';
+import { SeatSelectionMap } from '../../components/booking/SeatSelectionMap';
 
 interface FormPassenger {
   title: string;
@@ -60,6 +62,12 @@ export const BookingReviewPage: React.FC = () => {
   const [contactPhone, setContactPhone] = useState<string>('9876543210');
   const [passengers, setPassengers] = useState<FormPassenger[]>([]);
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
+
+  // Seat Selection State
+  const [isSeatModalOpen, setIsSeatModalOpen] = useState<boolean>(false);
+  const [seatAssignments, setSeatAssignments] = useState<
+    Array<{ seatNumber?: string; seatPrice?: number }>
+  >([]);
 
   // Payment Modal state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
@@ -178,7 +186,10 @@ export const BookingReviewPage: React.FC = () => {
     setIsPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = async (paymentMethod: 'CARD' | 'UPI' | 'NET_BANKING' | 'DEMO_PAY') => {
+  const handlePaymentSuccess = async (
+    paymentMethod: 'CARD' | 'UPI' | 'NET_BANKING' | 'DEMO_PAY',
+    utr?: string
+  ) => {
     setIsPaymentModalOpen(false);
     if (!flight) return;
 
@@ -186,11 +197,13 @@ export const BookingReviewPage: React.FC = () => {
     setError(null);
 
     try {
-      const formattedPassengers = passengers.map((p) => ({
+      const formattedPassengers = passengers.map((p, idx) => ({
         name: `${p.title} ${p.firstName.trim()} ${p.lastName.trim()}`.trim(),
         type: p.type,
         gender: p.gender,
         age: p.age,
+        seatNumber: seatAssignments[idx]?.seatNumber,
+        seatPrice: seatAssignments[idx]?.seatPrice || 0,
       }));
 
       const res = await bookingApi.create({
@@ -205,6 +218,18 @@ export const BookingReviewPage: React.FC = () => {
       });
 
       if (res.data.success && res.data.booking) {
+        if (utr) {
+          try {
+            await paymentApi.submitUtr({
+              bookingId: res.data.booking.id,
+              transactionRef: utr,
+              paymentMethod: 'UPI',
+            });
+          } catch (e) {
+            console.warn('UTR submission note:', e);
+          }
+        }
+
         navigate(`/booking/confirmation/${res.data.booking.id}`, {
           state: { booking: res.data.booking },
         });
@@ -246,7 +271,11 @@ export const BookingReviewPage: React.FC = () => {
 
   if (!flight) return null;
 
-  const grandTotal = preview?.breakdown.grandTotal || (flight.adultFare * adultCount + flight.childFare * childCount + 350 * (adultCount + childCount));
+  const seatTotal = seatAssignments.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
+  const baseGrandTotal =
+    preview?.breakdown.grandTotal ||
+    flight.adultFare * adultCount + flight.childFare * childCount + 350 * (adultCount + childCount);
+  const grandTotal = baseGrandTotal + seatTotal;
 
   return (
     <div className="bg-slate-50 min-h-screen py-8">
@@ -507,6 +536,23 @@ export const BookingReviewPage: React.FC = () => {
                             </span>
                             <span>{p.type === 'ADULT' ? 'Adult Passenger (Age 12+)' : 'Child Passenger (Age 2-11)'}</span>
                           </span>
+
+                          {seatAssignments[idx]?.seatNumber ? (
+                            <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold">
+                              <span>Seat {seatAssignments[idx]?.seatNumber}</span>
+                              <span className="text-[10px] text-emerald-600 font-medium">
+                                ({seatAssignments[idx]?.seatPrice ? `+₹${seatAssignments[idx]?.seatPrice}` : 'Free'})
+                              </span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsSeatModalOpen(true)}
+                              className="text-xs text-blue-600 hover:text-blue-700 font-bold hover:underline"
+                            >
+                              + Choose Seat
+                            </button>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -583,6 +629,48 @@ export const BookingReviewPage: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Visual Aircraft Seat Selection Banner */}
+                  <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50 rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center space-x-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 flex-shrink-0">
+                        <Plane className="w-6 h-6 transform -rotate-45" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-navy-950 text-sm">
+                          Interactive Aircraft Seat Map (3-3 Layout)
+                        </h4>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          Pick your preferred seats: Window, Aisle, Extra Legroom (Row 13), Emergency Exit (Row 12), or Business.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          {passengers.map((p, idx) => {
+                            const seat = seatAssignments[idx];
+                            return (
+                              <span
+                                key={idx}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  seat?.seatNumber
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'bg-white border border-slate-300 text-slate-600'
+                                }`}
+                              >
+                                Pax {idx + 1}: {seat?.seatNumber ? `${seat.seatNumber} (+₹${seat.seatPrice})` : 'Auto-Assign'}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsSeatModalOpen(true)}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-2 whitespace-nowrap"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>Select Seats on Map</span>
+                    </button>
                   </div>
 
                   {/* Contact Information */}
@@ -689,6 +777,7 @@ export const BookingReviewPage: React.FC = () => {
                             <th className="py-2.5 px-3">Name</th>
                             <th className="py-2.5 px-3">Category</th>
                             <th className="py-2.5 px-3">Gender</th>
+                            <th className="py-2.5 px-3">Assigned Seat</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -700,6 +789,18 @@ export const BookingReviewPage: React.FC = () => {
                               </td>
                               <td className="py-2.5 px-3 text-slate-600">{p.type}</td>
                               <td className="py-2.5 px-3 text-slate-600">{p.gender}</td>
+                              <td className="py-2.5 px-3">
+                                {seatAssignments[idx]?.seatNumber ? (
+                                  <span className="font-bold text-blue-600">
+                                    {seatAssignments[idx]?.seatNumber}
+                                    <span className="text-[10px] text-slate-500 ml-1 font-normal">
+                                      ({seatAssignments[idx]?.seatPrice ? `+₹${seatAssignments[idx]?.seatPrice}` : 'Free'})
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic">Auto-Assigned</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -782,10 +883,19 @@ export const BookingReviewPage: React.FC = () => {
                   </span>
                 </div>
 
+                {seatTotal > 0 && (
+                  <div className="flex justify-between py-1 text-blue-600">
+                    <span className="font-medium">
+                      Seat Selection ({seatAssignments.filter((s) => s.seatNumber).length} seats)
+                    </span>
+                    <span className="font-bold">+₹{seatTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+
                 <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
                   <div>
                     <span className="text-sm font-black text-navy-950">Grand Total</span>
-                    <p className="text-[10px] text-slate-400">All fees & seat booking included</p>
+                    <p className="text-[10px] text-slate-400">All fees & seat selection included</p>
                   </div>
                   <span className="text-2xl font-black text-blue-600">
                     ₹{grandTotal.toLocaleString('en-IN')}
@@ -807,7 +917,24 @@ export const BookingReviewPage: React.FC = () => {
 
       </div>
 
-      {/* MakeMyTrip-Style Interactive Payment Gateway Modal */}
+      {/* Interactive Top-Down Aircraft Seat Selection Modal */}
+      {isSeatModalOpen && flight && (
+        <SeatSelectionMap
+          flightInstanceId={flight.id}
+          passengers={passengers.map((p) => ({
+            name: `${p.title} ${p.firstName} ${p.lastName}`.trim(),
+            type: p.type,
+          }))}
+          currentAssignments={seatAssignments}
+          onConfirmSeats={(assignments) => {
+            setSeatAssignments(assignments);
+            setIsSeatModalOpen(false);
+          }}
+          onClose={() => setIsSeatModalOpen(false)}
+        />
+      )}
+
+      {/* MakeMyTrip-Style Interactive Payment Gateway Modal with Google Pay QR */}
       <PaymentGatewayModal
         isOpen={isPaymentModalOpen}
         amount={grandTotal}

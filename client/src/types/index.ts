@@ -1,7 +1,12 @@
 export interface User {
   id: string;
+  customerId?: string;
+  name?: string;
   username: string;
   email?: string | null;
+  mobileNumber?: string | null;
+  isEmailVerified?: boolean;
+  isMobileVerified?: boolean;
   createdAt: string;
 }
 
@@ -52,6 +57,8 @@ export interface Passenger {
   type: 'ADULT' | 'CHILD';
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
   age?: number;
+  seatNumber?: string;
+  seatPrice?: number;
   isCancelled?: boolean;
 }
 
@@ -165,3 +172,97 @@ export interface DashboardStats {
   confirmedBookings: number;
   cancelledBookings: number;
 }
+
+export interface SeatMapItem {
+  id: string;
+  seatNumber: string;
+  rowNumber: number;
+  columnLetter: string;
+  seatType: 'WINDOW' | 'AISLE' | 'MIDDLE';
+  tier: 'BUSINESS' | 'EXIT_ROW' | 'EXTRA_LEGROOM' | 'PREFERRED' | 'STANDARD';
+  price: number;
+  isExitRow: boolean;
+  isOccupied: boolean;
+  isBlocked: boolean;
+  bookedByPassenger?: string | null;
+}
+
+export interface AircraftSeatMapResponse {
+  aircraft: {
+    name: string;
+    code: string;
+    seatLayout: string;
+    totalRows: number;
+    seatsPerRow: number;
+  };
+  flightInstanceId: string;
+  seats: SeatMapItem[];
+}
+
+export interface PaymentConfig {
+  upiId: string;
+  merchantName: string;
+  qrNote: string;
+  isSandbox: boolean;
+}
+
+export interface PaymentRecord {
+  id: string;
+  bookingId: string;
+  amount: number;
+  paymentMethod: string;
+  status: 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED' | 'REFUNDED';
+  transactionRef?: string | null;
+  submittedAt: string;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  adminNotes?: string | null;
+  booking?: Booking;
+}
+
+export interface CancellationQuote {
+  bookingId: string;
+  bookingReference: string;
+  travelDate: string;
+  hoursUntilDeparture: number;
+  tier: string;
+  refundPercentage: number;
+  totalPaid: number;
+  refundAmount: number;
+  cancellationFee: number;
+  notes: string;
+}
+
+export interface LowFareDay {
+  date: string;
+  lowestFare: number;
+  availableSeats: number;
+  isLowestInWindow: boolean;
+  flightCount: number;
+}
+
+export interface Holiday {
+  id: string;
+  name: string;
+  date: string;
+  surgeMultiplier: number;
+  description?: string | null;
+}
+
+export interface PricingRule {
+  id: string;
+  name: string;
+  ruleType: string;
+  conditionValue?: string | null;
+  multiplier: number;
+  isActive: boolean;
+}
+
+export interface Feedback {
+  id: string;
+  bookingId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+}
+

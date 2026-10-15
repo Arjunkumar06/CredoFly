@@ -13,6 +13,10 @@ router.use(requireCustomerAuth);
 router.post('/', BookingController.create);
 router.get('/me', BookingController.getMyBookings);
 router.get('/:id', BookingController.getById);
+router.post('/:id/reserve-seats', BookingController.reserveSeats);
+router.get('/:id/cancellation-quote', BookingController.getCancellationQuote);
+router.post('/:id/cancel-with-refund', BookingController.cancelWithTierRefund);
+router.post('/:id/feedback', BookingController.submitFeedback);
 router.post('/:id/cancel', BookingController.cancel);
 router.post('/:id/partial-cancel', BookingController.partialCancel);
 

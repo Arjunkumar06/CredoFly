@@ -77,9 +77,14 @@ export const Navbar: React.FC = () => {
                   className="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-sm text-slate-200 hover:bg-slate-700 transition"
                 >
                   <div className="w-6 h-6 rounded-full bg-blue-600/30 flex items-center justify-center text-blue-400 font-semibold text-xs">
-                    {user.username.charAt(0).toUpperCase()}
+                    {(user.name || user.username).charAt(0).toUpperCase()}
                   </div>
-                  <span className="font-medium text-xs sm:text-sm">{user.username}</span>
+                  <span className="font-medium text-xs sm:text-sm">{user.name || user.username}</span>
+                  {user.customerId && (
+                    <span className="hidden sm:inline-block text-[10px] bg-blue-900/90 text-blue-300 font-mono px-1.5 py-0.5 rounded border border-blue-700/60">
+                      {user.customerId}
+                    </span>
+                  )}
                 </Link>
                 <button
                   onClick={handleLogout}

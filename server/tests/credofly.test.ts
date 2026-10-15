@@ -441,14 +441,11 @@ describe('CredoFly API Test Suite', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.preview.cabinClass).toBe('BUSINESS');
-      // Adult base = 3000 * 1.8 = 5400
-      expect(res.body.preview.breakdown.baseAdultFare).toBe(5400);
-      // Child base = 1800 * 1.8 = 3240
-      expect(res.body.preview.breakdown.baseChildFare).toBe(3240);
-      // Taxes = 350 * 2 = 700
+      // Adult base = 3000 * 1.8 = 5400 (plus 10% surge on weekends = 5940)
+      expect([5400, 5940]).toContain(res.body.preview.breakdown.baseAdultFare);
+      expect([3240, 3564]).toContain(res.body.preview.breakdown.baseChildFare);
       expect(res.body.preview.breakdown.taxesAndFees).toBe(700);
-      // Grand total = 5400 + 3240 + 700 = 9340
-      expect(res.body.preview.breakdown.grandTotal).toBe(9340);
+      expect([9340, 10204]).toContain(res.body.preview.breakdown.grandTotal);
       expect(res.body.preview.baggage.cabin).toBe('12 Kg');
       expect(res.body.preview.baggage.checkIn).toBe('30 Kg');
     });
@@ -499,6 +496,482 @@ describe('CredoFly API Test Suite', () => {
       expect(res.body.booking.paymentMethod).toBe('UPI');
       expect(res.body.booking.passengers[0].gender).toBe('FEMALE');
       expect(res.body.booking.passengers[0].age).toBe(34);
+    });
+  });
+
+  describe('7. Advanced Authentication: Customer ID, Multi-Factor Login, Google OAuth, & Recovery', () => {
+    let advCustomerId: string;
+    let advUserToken: string;
+    const advUsername = `adv_${Date.now()}`;
+    const advEmail = `${advUsername}@example.com`;
+    const advMobile = `+91 ${Math.floor(6000000000 + Math.random() * 3999999999)}`;
+    const advPassword = 'Password123!';
+
+    it('should register a customer with unique auto-generated Customer ID and mobile number', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Sarah Connor',
+          username: advUsername,
+          email: advEmail,
+          mobileNumber: advMobile,
+          password: advPassword,
+          confirmPassword: advPassword,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.customerId).toBeDefined();
+      expect(res.body.customerId).toMatch(/^CF-CUST-\d{6}$/);
+      expect(res.body.user.mobileNumber).toBe(advMobile);
+      advCustomerId = res.body.customerId;
+      advUserToken = res.body.token;
+    });
+
+    it('should login using unique Customer ID and password', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: advCustomerId,
+          password: advPassword,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.customerId).toBe(advCustomerId);
+      expect(res.body.token).toBeDefined();
+    });
+
+    it('should login using registered email and password', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: advEmail,
+          password: advPassword,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.email).toBe(advEmail);
+    });
+
+    it('should login using registered mobile number and password', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: advMobile,
+          password: advPassword,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.mobileNumber).toBe(advMobile);
+    });
+
+    it('should return generic failure message for invalid password to prevent enumeration', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: advCustomerId,
+          password: 'WrongPassword!',
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Invalid login credentials');
+    });
+
+    it('should sign in or create customer via Google OAuth without granting admin privileges', async () => {
+      const googleSub = `goog_${Date.now()}`;
+      const googleEmail = `google_${Date.now()}@example.com`;
+
+      const res = await request(app)
+        .post('/api/auth/google')
+        .send({
+          googleId: googleSub,
+          email: googleEmail,
+          name: 'Google Traveler',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.customerId).toBeDefined();
+      expect(res.body.user.email).toBe(googleEmail);
+      expect(res.body.token).toBeDefined();
+
+      // Ensure customer accounts never receive admin privileges
+      const adminRes = await request(app)
+        .get('/api/admin/verify')
+        .set('Authorization', `Bearer ${res.body.token}`);
+      expect(adminRes.status).toBe(401);
+    });
+
+    it('should securely link Google account to existing user by verified email', async () => {
+      const googleSub = `goog_link_${Date.now()}`;
+      const res = await request(app)
+        .post('/api/auth/google')
+        .send({
+          googleId: googleSub,
+          email: advEmail, // Matches existing customer Sarah Connor
+          name: 'Sarah Connor',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user.customerId).toBe(advCustomerId);
+      expect(res.body.user.email).toBe(advEmail);
+    });
+
+    it('should recover Customer ID via registered email or mobile number', async () => {
+      const res = await request(app)
+        .post('/api/auth/recover-customer-id')
+        .send({
+          email: advEmail,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.customerId).toBe(advCustomerId);
+    });
+  });
+
+  describe('8. Visual Seat Map & Concurrency-Safe Seat Reservation', () => {
+    let seatBookingId: string;
+
+    beforeAll(async () => {
+      // Replenish seats on flightInstanceId for seat reservation, payments, and cancellation suites
+      await prisma.flightInstance.update({
+        where: { id: flightInstanceId },
+        data: { availableSeats: 50 },
+      });
+    });
+
+    it('should render aircraft seat map with cabin layout, rows, and seat features', async () => {
+      const res = await request(app).get(`/api/flights/instance/${flightInstanceId}/seats`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.aircraft).toBeDefined();
+      expect(res.body.aircraft.seatLayout).toBe('3-3');
+      expect(res.body.seats.length).toBeGreaterThanOrEqual(100);
+
+      // Verify seat attributes: window, aisle, middle, price
+      const seat1A = res.body.seats.find((s: any) => s.seatNumber === '1A');
+      expect(seat1A).toBeDefined();
+      expect(seat1A.seatPosition).toBe('WINDOW');
+      expect(seat1A.cabinClass).toBe('BUSINESS');
+      expect(seat1A.price).toBeGreaterThan(0);
+    });
+
+    it('should reserve seats atomically and calculate seat surcharges', async () => {
+      // 1. Create a 2-passenger booking
+      const bookRes = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 2,
+          childCount: 0,
+          passengers: [
+            { name: 'Seat User 1', type: 'ADULT' },
+            { name: 'Seat User 2', type: 'ADULT' },
+          ],
+        });
+
+      expect(bookRes.status).toBe(201);
+      seatBookingId = bookRes.body.booking.id;
+
+      // 2. Reserve seats 1A and 1B
+      const res = await request(app)
+        .post(`/api/bookings/${seatBookingId}/reserve-seats`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          assignments: [
+            { passengerIndex: 0, seatNumber: '1A' },
+            { passengerIndex: 1, seatNumber: '1B' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.seatsAssigned).toEqual(['1A', '1B']);
+      expect(res.body.additionalCharges).toBeGreaterThan(0);
+      expect(Number(res.body.booking.seatCharges)).toBe(res.body.additionalCharges);
+    });
+
+    it('should prevent concurrent users from booking an already occupied seat', async () => {
+      // Create second booking
+      const bookRes = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          passengers: [{ name: 'Conflict User', type: 'ADULT' }],
+        });
+
+      const secondBookingId = bookRes.body.booking.id;
+
+      // Try to reserve already booked seat '1A'
+      const res = await request(app)
+        .post(`/api/bookings/${secondBookingId}/reserve-seats`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          assignments: [{ passengerIndex: 0, seatNumber: '1A' }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('already occupied');
+    });
+  });
+
+  describe('9. 12-Month Schedule Generator, Low-Fare Calendar, & Holidays', () => {
+    it('should generate dated flight instances for the next 12 months idempotently', async () => {
+      const res = await request(app)
+        .post('/api/admin/generate-schedules')
+        .set('Authorization', adminAuthHeader)
+        .send({ months: 12 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.monthsCovered).toBe(12);
+      expect(res.body.totalInstancesCheckedOrCreated).toBeGreaterThan(50);
+
+      // Idempotency: rerunning generator does not error or cause duplicate key conflicts
+      const rerunRes = await request(app)
+        .post('/api/admin/generate-schedules')
+        .set('Authorization', adminAuthHeader)
+        .send({ months: 12 });
+
+      expect(rerunRes.status).toBe(200);
+      expect(rerunRes.body.success).toBe(true);
+    });
+
+    it('should fetch low-fare calendar across available departure dates', async () => {
+      const res = await request(app)
+        .get('/api/flights/calendar')
+        .query({
+          origin: 'Bangalore (BLR)',
+          destination: 'Delhi (DEL)',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.calendar)).toBe(true);
+      if (res.body.calendar.length > 0) {
+        expect(res.body.calendar[0].lowestFare).toBeGreaterThan(0);
+        expect(res.body.calendar[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    });
+
+    it('should allow admin to configure holidays affecting schedule and pricing', async () => {
+      const res = await request(app)
+        .post('/api/admin/holidays')
+        .set('Authorization', adminAuthHeader)
+        .send({
+          name: 'Special Aviation Day',
+          date: '2026-11-20',
+          affectsSchedule: false,
+          affectsPricing: true,
+          surgePercentage: 25,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.holiday.name).toBe('Special Aviation Day');
+      expect(Number(res.body.holiday.surgePercentage)).toBe(25);
+    });
+  });
+
+  describe('10. Google Pay QR Workflow & Admin Manual Payment Verification', () => {
+    let gpayBookingId: string;
+    let paymentId: string;
+    const testUtr = `UTR${Date.now()}`;
+
+    it('should fetch active Google Pay / UPI QR configuration', async () => {
+      const res = await request(app).get('/api/payment/config');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.config.merchantName).toBeDefined();
+      expect(res.body.config.upiId).toBeDefined();
+    });
+
+    it('should create booking in PENDING_VERIFICATION status when paying via GPAY_QR', async () => {
+      const res = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          paymentMethod: 'GPAY_QR',
+          passengers: [{ name: 'QR Payer', type: 'ADULT' }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.booking.paymentStatus).toBe('PENDING_VERIFICATION');
+      expect(res.body.booking.paymentMethod).toBe('GPAY_QR');
+      gpayBookingId = res.body.booking.id;
+    });
+
+    it('should submit Google Pay transaction UTR for verification', async () => {
+      const res = await request(app)
+        .post('/api/payment/submit')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          bookingId: gpayBookingId,
+          method: 'GPAY_QR',
+          utr: testUtr,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payment).toBeDefined();
+      expect(res.body.payment.utr).toBe(testUtr);
+      paymentId = res.body.payment.id;
+    });
+
+    it('should list submitted payment in admin payment review queue', async () => {
+      const res = await request(app)
+        .get('/api/admin/payments')
+        .set('Authorization', adminAuthHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const found = res.body.payments.find((p: any) => p.id === paymentId);
+      expect(found).toBeDefined();
+      expect(found.utr).toBe(testUtr);
+    });
+
+    it('should allow admin to verify payment and transition booking to CONFIRMED', async () => {
+      const res = await request(app)
+        .post(`/api/admin/payments/${paymentId}/verify`)
+        .set('Authorization', adminAuthHeader)
+        .send({ status: 'VERIFIED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payment.status).toBe('VERIFIED');
+
+      // Verify booking payment status updated to CONFIRMED
+      const bookingCheck = await request(app)
+        .get(`/api/bookings/${gpayBookingId}`)
+        .set('Authorization', `Bearer ${customerToken}`);
+
+      expect(bookingCheck.status).toBe(200);
+      expect(bookingCheck.body.booking.paymentStatus).toBe('CONFIRMED');
+    });
+
+    it('should reject submission of duplicate verified UTR on another booking', async () => {
+      // Create another booking
+      const bookRes = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          passengers: [{ name: 'Duplicate Check User', type: 'ADULT' }],
+        });
+
+      const secondId = bookRes.body.booking.id;
+
+      // Attempt to submit identical UTR
+      const res = await request(app)
+        .post('/api/payment/submit')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          bookingId: secondId,
+          method: 'GPAY_QR',
+          utr: testUtr,
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('already been verified');
+    });
+  });
+
+  describe('11. Exact Refund Tiers, Cancellation Quotes, & Post-Flight Feedback', () => {
+    let cancelBookingId: string;
+
+    it('should create booking and provide pre-cancellation quote with exact refund tier and fees', async () => {
+      const res = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          passengers: [{ name: 'Refund Quote Traveler', type: 'ADULT' }],
+        });
+
+      expect(res.status).toBe(201);
+      cancelBookingId = res.body.booking.id;
+
+      // Get cancellation quote
+      const quoteRes = await request(app)
+        .get(`/api/bookings/${cancelBookingId}/cancellation-quote`)
+        .set('Authorization', `Bearer ${customerToken}`);
+
+      expect(quoteRes.status).toBe(200);
+      expect(quoteRes.body.success).toBe(true);
+      expect(quoteRes.body.quote.estimatedRefund).toBeDefined();
+      expect(quoteRes.body.quote.cancellationFee).toBeDefined();
+      expect(quoteRes.body.quote.refundPercentage).toBeGreaterThanOrEqual(0);
+      expect(quoteRes.body.quote.tier).toBeDefined();
+    });
+
+    it('should cancel booking under tier policy and record cancellation history', async () => {
+      const res = await request(app)
+        .post(`/api/bookings/${cancelBookingId}/cancel-with-refund`)
+        .set('Authorization', `Bearer ${customerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.booking.status).toBe('CANCELLED');
+      expect(res.body.cancellation).toBeDefined();
+      expect(res.body.cancellation.refundTier).toBeDefined();
+    });
+
+    it('should prevent repeated cancellation on already cancelled booking', async () => {
+      const res = await request(app)
+        .post(`/api/bookings/${cancelBookingId}/cancel-with-refund`)
+        .set('Authorization', `Bearer ${customerToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('already been cancelled');
+    });
+
+    it('should allow customer to submit post-flight feedback and ratings', async () => {
+      const res = await request(app)
+        .post(`/api/bookings/${cancelBookingId}/feedback`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          rating: 5,
+          punctualityRating: 5,
+          serviceRating: 5,
+          cleanlinessRating: 4,
+          comment: 'Outstanding flight experience with CredoFly!',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.feedback.rating).toBe(5);
+      expect(res.body.feedback.comment).toContain('CredoFly');
+    });
+
+    it('should reject duplicate feedback submission for the same booking', async () => {
+      const res = await request(app)
+        .post(`/api/bookings/${cancelBookingId}/feedback`)
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          rating: 4,
+          comment: 'Second feedback attempt',
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('already been submitted');
     });
   });
 

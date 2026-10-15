@@ -8,46 +8,104 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  username     String    @unique
-  email        String?   @unique
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  bookings     Booking[]
+  id               String         @id @default(uuid())
+  customerId       String?        @unique // e.g., CF-CUST-849201
+  name             String?
+  username         String         @unique
+  email            String?        @unique
+  mobileNumber     String?        @unique
+  isEmailVerified  Boolean        @default(false)
+  isMobileVerified Boolean        @default(false)
+  passwordHash     String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  bookings         Booking[]
+  oauthAccounts    OAuthAccount[]
+  feedbacks        Feedback[]
 
   @@map("users")
 }
 
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String   // "GOOGLE"
+  providerUserId String   // Google sub ID
+  email          String?
+  createdAt      DateTime @default(now())
+
+  @@unique([provider, providerUserId])
+  @@map("oauth_accounts")
+}
+
+model AircraftConfiguration {
+  id          String         @id @default(uuid())
+  name        String         // e.g., "Airbus A320neo (3-3 Standard)"
+  code        String         @unique // "A320-33"
+  seatLayout  String         @default("3-3") // "3-3" or "2-2"
+  totalRows   Int            @default(30)
+  seatsPerRow Int            @default(6)
+  createdAt   DateTime       @default(now())
+  seats       SeatTemplate[]
+  flights     Flight[]
+
+  @@map("aircraft_configurations")
+}
+
+model SeatTemplate {
+  id               String                @id @default(uuid())
+  aircraftConfigId String
+  aircraftConfig   AircraftConfiguration @relation(fields: [aircraftConfigId], references: [id], onDelete: Cascade)
+  seatNumber       String                // e.g., "1A", "1B", "12C"
+  rowNumber        Int
+  seatPosition     String                // "WINDOW", "MIDDLE", "AISLE"
+  cabinClass       String                @default("ECONOMY") // "BUSINESS", "PREMIUM_ECONOMY", "ECONOMY", "FIRST_CLASS"
+  features         String                @default("STANDARD") // "STANDARD", "EXTRA_LEGROOM", "EXIT_ROW", "PREFERRED"
+  basePrice        Decimal               @db.Decimal(10, 2) @default(0.00)
+  isBlocked        Boolean               @default(false)
+
+  @@unique([aircraftConfigId, seatNumber])
+  @@map("seat_templates")
+}
+
 model Flight {
-  id          String           @id @default(uuid())
-  flightCode  String           @unique
-  origin      String
-  destination String
-  capacity    Int
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  schedules   FlightSchedule[]
-  instances   FlightInstance[]
+  id               String                 @id @default(uuid())
+  flightCode       String                 @unique
+  airlineName      String                 @default("CredoFly Express")
+  origin           String
+  destination      String
+  capacity         Int
+  isActive         Boolean                @default(true)
+  aircraftConfigId String?
+  aircraftConfig   AircraftConfiguration? @relation(fields: [aircraftConfigId], references: [id], onDelete: SetNull)
+  timeZone         String                 @default("Asia/Kolkata")
+  durationMinutes  Int                    @default(170)
+  status           String                 @default("SCHEDULED") // "SCHEDULED", "DELAYED", "CANCELLED", "COMPLETED"
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  schedules        FlightSchedule[]
+  instances        FlightInstance[]
 
   @@index([origin, destination])
   @@map("flights")
 }
 
 model FlightSchedule {
-  id            String           @id @default(uuid())
-  flightId      String
-  flight        Flight           @relation(fields: [flightId], references: [id], onDelete: Cascade)
-  dayOfWeek     Int              // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  departureTime String           // Format: "HH:mm"
-  arrivalTime   String           // Format: "HH:mm"
-  adultFare     Decimal          @db.Decimal(10, 2)
-  childFare     Decimal          @db.Decimal(10, 2)
-  isOperating   Boolean          @default(true)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  instances     FlightInstance[]
+  id                 String           @id @default(uuid())
+  flightId           String
+  flight             Flight           @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  dayOfWeek          Int              // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  departureTime      String           // Format: "HH:mm"
+  arrivalTime        String           // Format: "HH:mm"
+  adultFare          Decimal          @db.Decimal(10, 2)
+  childFare          Decimal          @db.Decimal(10, 2)
+  effectiveStartDate DateTime?        @db.Date
+  effectiveEndDate   DateTime?        @db.Date
+  isOperating        Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  instances          FlightInstance[]
 
   @@unique([flightId, dayOfWeek])
   @@map("flight_schedules")
@@ -65,13 +123,35 @@ model FlightInstance {
   adultFare      Decimal         @db.Decimal(10, 2)
   childFare      Decimal         @db.Decimal(10, 2)
   availableSeats Int
+  status         String          @default("SCHEDULED") // "SCHEDULED", "DELAYED", "CANCELLED", "BOARDING", "DEPARTED", "ARRIVED"
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   bookings       Booking[]
+  seats          FlightSeat[]
 
   @@unique([flightId, travelDate, departureTime])
   @@index([travelDate])
   @@map("flight_instances")
+}
+
+model FlightSeat {
+  id               String         @id @default(uuid())
+  flightInstanceId String
+  flightInstance   FlightInstance @relation(fields: [flightInstanceId], references: [id], onDelete: Cascade)
+  seatNumber       String         // e.g., "1A", "12B"
+  rowNumber        Int
+  seatPosition     String         // "WINDOW", "MIDDLE", "AISLE"
+  cabinClass       String         @default("ECONOMY")
+  features         String         @default("STANDARD") // "STANDARD", "EXTRA_LEGROOM", "EXIT_ROW", "PREFERRED"
+  price            Decimal        @db.Decimal(10, 2) @default(0.00)
+  status           String         @default("AVAILABLE") // "AVAILABLE", "OCCUPIED", "BLOCKED"
+  passengerId      String?        @unique
+  passenger        Passenger?     @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  bookingId        String?
+  booking          Booking?       @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@unique([flightInstanceId, seatNumber])
+  @@map("flight_seats")
 }
 
 model Booking {
@@ -84,13 +164,14 @@ model Booking {
   flightInstance    FlightInstance @relation(fields: [flightInstanceId], references: [id], onDelete: Restrict)
   adultCount        Int
   childCount        Int
-  cabinClass        String         @default("ECONOMY") // ECONOMY, PREMIUM_ECONOMY, BUSINESS
+  cabinClass        String         @default("ECONOMY") // ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST_CLASS
   contactEmail      String?
   contactPhone      String?
-  paymentStatus     String         @default("CONFIRMED") // CONFIRMED, PENDING_PAYMENT, PAYMENT_FAILED, REFUNDED
-  paymentMethod     String?        // CARD, UPI, NET_BANKING, DEMO_PAY
+  paymentStatus     String         @default("CONFIRMED") // CONFIRMED, PENDING_VERIFICATION, PAYMENT_FAILED, REFUNDED
+  paymentMethod     String?        // GPAY_QR, CARD, UPI, NET_BANKING, DEMO_PAY
   adultFareSnapshot Decimal        @db.Decimal(10, 2)
   childFareSnapshot Decimal        @db.Decimal(10, 2)
+  seatCharges       Decimal        @db.Decimal(10, 2) @default(0.00)
   totalAmount       Decimal        @db.Decimal(10, 2)
   status            String         // "CONFIRMED", "CANCELLED"
   createdAt         DateTime       @default(now())
@@ -98,6 +179,10 @@ model Booking {
   cancelledAt       DateTime?
   passengers        Passenger[]
   auditEvents       BookingEvent[]
+  seats             FlightSeat[]
+  payments          Payment[]
+  cancellations     Cancellation[]
+  feedback          Feedback?
 
   @@index([userId])
   @@index([status])
@@ -105,15 +190,18 @@ model Booking {
 }
 
 model Passenger {
-  id          String   @id @default(uuid())
+  id          String      @id @default(uuid())
   bookingId   String
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking     Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   name        String
-  type        String   // "ADULT" or "CHILD"
-  gender      String?  // "MALE", "FEMALE", "OTHER"
+  type        String      // "ADULT" or "CHILD"
+  gender      String?     // "MALE", "FEMALE", "OTHER"
   age         Int?
-  isCancelled Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  seatNumber  String?     // e.g., "12A"
+  seatPrice   Decimal?    @db.Decimal(10, 2)
+  isCancelled Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  seat        FlightSeat?
 
   @@map("passengers")
 }
@@ -127,4 +215,123 @@ model BookingEvent {
   createdAt DateTime @default(now())
 
   @@map("booking_events")
+}
+
+model PaymentConfig {
+  id                       String   @id @default(uuid())
+  merchantName             String   @default("CredoFly Aviation Pvt Ltd")
+  upiId                    String   @default("credofly@oksbi")
+  qrImageUrl               String?
+  instructions             String   @default("Scan the Google Pay / UPI QR code with any UPI app, pay the exact amount, and enter your 12-digit UPI UTR reference number below.")
+  requireManualVerification Boolean  @default(true)
+  updatedAt                DateTime @updatedAt
+
+  @@map("payment_configs")
+}
+
+model Payment {
+  id              String    @id @default(uuid())
+  bookingId       String
+  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount          Decimal   @db.Decimal(10, 2)
+  method          String    @default("GPAY_QR") // GPAY_QR, UPI, CARD, NET_BANKING, DEMO_PAY
+  utr             String?   // 12-digit UPI UTR reference
+  proofUrl        String?   // Screenshot / receipt file path
+  status          String    @default("PENDING_VERIFICATION") // PENDING, PENDING_VERIFICATION, VERIFIED, REJECTED, REFUNDED
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+
+  @@index([utr])
+  @@index([status])
+  @@map("payments")
+}
+
+model Cancellation {
+  id                   String    @id @default(uuid())
+  bookingId            String
+  booking              Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  hoursBeforeDeparture Decimal   @db.Decimal(8, 2)
+  refundTier           String    // "TIER_10_DAYS_95", "TIER_7_DAYS_75", "TIER_3_DAYS_50", "TIER_LESS_3_DAYS_0"
+  refundPercentage     Decimal   @db.Decimal(5, 2)
+  totalPaid            Decimal   @db.Decimal(10, 2)
+  refundAmount         Decimal   @db.Decimal(10, 2)
+  cancellationFee      Decimal   @db.Decimal(10, 2)
+  status               String    @default("PROCESSED") // PENDING, PROCESSED, REJECTED
+  processedAt          DateTime? @default(now())
+  createdAt            DateTime  @default(now())
+
+  @@map("cancellations")
+}
+
+model Holiday {
+  id              String   @id @default(uuid())
+  name            String
+  date            DateTime @db.Date @unique
+  affectsSchedule Boolean  @default(false)
+  affectsPricing  Boolean  @default(true)
+  surgePercentage Decimal  @db.Decimal(5, 2) @default(15.00)
+  createdAt       DateTime @default(now())
+
+  @@map("holidays")
+}
+
+model PricingRule {
+  id              String   @id @default(uuid())
+  name            String
+  startDate       DateTime @db.Date
+  endDate         DateTime @db.Date
+  applicableDays  String   @default("[]") // JSON string e.g. "[0, 6]" for weekends
+  route           String?  // e.g. "Bangalore (BLR)-Delhi (DEL)" or null for all routes
+  cabinClass      String?  // "ECONOMY", "BUSINESS", etc. or null
+  adjustmentType  String   @default("PERCENTAGE") // "PERCENTAGE" or "FIXED"
+  adjustmentValue Decimal  @db.Decimal(10, 2)
+  priority        Int      @default(1)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@map("pricing_rules")
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  channel   String   // "EMAIL", "SMS"
+  recipient String   // email or mobile
+  event     String   // "REGISTRATION", "BOOKING_CONFIRMATION", "PAYMENT_VERIFIED", "CANCELLATION", "REFUND_UPDATE"
+  title     String?
+  message   String
+  status    String   @default("SENT") // "SENT", "PENDING", "FAILED"
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@map("notification_logs")
+}
+
+model Feedback {
+  id                 String   @id @default(uuid())
+  bookingId          String   @unique
+  booking            Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating             Int      // 1 to 5
+  punctualityRating  Int?
+  serviceRating      Int?
+  cleanlinessRating  Int?
+  comment            String?
+  createdAt          DateTime @default(now())
+
+  @@map("feedbacks")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // e.g., "FLIGHT_UPDATE", "SCHEDULE_CHANGE", "PAYMENT_VERIFIED", "PRICING_RULE_CREATE"
+  entity    String   // "Flight", "FlightSchedule", "Payment", "PricingRule"
+  entityId  String
+  actor     String   // "admin" or user ID
+  details   String
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
 }
