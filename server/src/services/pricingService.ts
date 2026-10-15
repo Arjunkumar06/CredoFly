@@ -1,9 +1,36 @@
 import { prisma } from '../db.js';
+import { TAX_PER_PASSENGER_PER_LEG } from '../utils/constants.js';
+import { NotFoundError } from '../utils/errors.js';
 
 export interface PricingAdjustment {
   baseMultiplier: number;
   surgePercentage: number;
   appliedRules: string[];
+}
+
+export interface ItineraryFareResult {
+  flightInstanceId: string;
+  flightCode: string;
+  origin: string;
+  destination: string;
+  travelDate: string;
+  departureTime: string;
+  arrivalTime: string;
+  availableSeats: number;
+  adultCount: number;
+  childCount: number;
+  cabinClass: string;
+  multiplier: number;
+  baseAdultFare: number;
+  baseChildFare: number;
+  adultSubtotal: number;
+  childSubtotal: number;
+  baseTotal: number;
+  taxesAndFees: number;
+  seatCharges: number;
+  grandTotal: number;
+  appliedRules: string[];
+  selectedSeatDetails: Array<{ seatNumber: string; price: number; type?: string }>;
 }
 
 export class PricingService {
@@ -99,6 +126,99 @@ export class PricingService {
       baseMultiplier: Number(finalMultiplier.toFixed(3)),
       surgePercentage: totalSurgePct,
       appliedRules,
+    };
+  }
+
+  /**
+   * Single authoritative itinerary fare calculator for preview, booking creation, and confirmation.
+   * Ensures identical base fare, passenger subtotals, cabin multiplier, seat fees, and taxes.
+   */
+  static async calculateItineraryFare(params: {
+    flightInstanceId: string;
+    adultCount: number;
+    childCount: number;
+    cabinClass?: string;
+    selectedSeats?: string[];
+    db?: any;
+  }): Promise<ItineraryFareResult> {
+    const dbClient = params.db || prisma;
+    const { flightInstanceId, adultCount, childCount, cabinClass = 'ECONOMY', selectedSeats = [] } = params;
+    const totalPassengers = adultCount + childCount;
+
+    const instance = await dbClient.flightInstance.findUnique({
+      where: { id: flightInstanceId },
+      include: {
+        flight: {
+          include: { aircraftConfig: true },
+        },
+      },
+    });
+
+    if (!instance) {
+      throw new NotFoundError('Flight departure not found');
+    }
+
+    const pricing = await PricingService.calculateDynamicMultiplier({
+      travelDate: instance.travelDate,
+      route: `${instance.flight.origin}-${instance.flight.destination}`,
+      cabinClass,
+    });
+
+    const baseAdultFare = Math.round(instance.adultFare.toNumber() * pricing.baseMultiplier);
+    const baseChildFare = Math.round(instance.childFare.toNumber() * pricing.baseMultiplier);
+    const adultSubtotal = baseAdultFare * adultCount;
+    const childSubtotal = baseChildFare * childCount;
+    const baseTotal = adultSubtotal + childSubtotal;
+
+    const taxesAndFees = TAX_PER_PASSENGER_PER_LEG * totalPassengers;
+
+    let seatCharges = 0;
+    const selectedSeatDetails: Array<{ seatNumber: string; price: number; type?: string }> = [];
+
+    if (selectedSeats && selectedSeats.length > 0) {
+      const seats = await dbClient.flightSeat.findMany({
+        where: {
+          flightInstanceId,
+          seatNumber: { in: selectedSeats.map((s) => s.toUpperCase().trim()) },
+        },
+      });
+
+      for (const s of seats) {
+        const price = s.price.toNumber();
+        seatCharges += price;
+        selectedSeatDetails.push({
+          seatNumber: s.seatNumber,
+          price,
+          type: s.features,
+        });
+      }
+    }
+
+    const grandTotal = baseTotal + taxesAndFees + seatCharges;
+
+    return {
+      flightInstanceId,
+      flightCode: instance.flight.flightCode,
+      origin: instance.flight.origin,
+      destination: instance.flight.destination,
+      travelDate: instance.travelDate.toISOString().slice(0, 10),
+      departureTime: instance.departureTime,
+      arrivalTime: instance.arrivalTime,
+      availableSeats: instance.availableSeats,
+      adultCount,
+      childCount,
+      cabinClass,
+      multiplier: pricing.baseMultiplier,
+      baseAdultFare,
+      baseChildFare,
+      adultSubtotal,
+      childSubtotal,
+      baseTotal,
+      taxesAndFees,
+      seatCharges,
+      grandTotal,
+      appliedRules: pricing.appliedRules,
+      selectedSeatDetails,
     };
   }
 }

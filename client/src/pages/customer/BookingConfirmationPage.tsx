@@ -152,22 +152,63 @@ export const BookingConfirmationPage: React.FC = () => {
 
   return (
     <div className="bg-slate-50 min-h-screen py-8 print:py-0 print:bg-white">
-      {/* Print-specific style */}
+      {/* Strict Single-Page A4 Print Styling */}
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm 6mm 8mm;
+          }
+          *, *::before, *::after {
+            box-shadow: none !important;
+            text-shadow: none !important;
+          }
           body {
             background-color: white !important;
-            color: black !important;
+            color: #0f172a !important;
+            font-size: 8.5pt !important;
+            line-height: 1.25 !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          .no-print {
+          .no-print, header, footer, nav, button {
             display: none !important;
           }
           .print-ticket {
-            border: 1px solid #cbd5e1 !important;
+            border: 1px solid #94a3b8 !important;
             box-shadow: none !important;
-            margin: 0 !important;
+            margin: 0 auto !important;
             width: 100% !important;
             max-width: 100% !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            border-radius: 6px !important;
+          }
+          .print-ticket .p-6, .print-ticket .p-8 {
+            padding: 8px 12px !important;
+          }
+          .print-ticket .py-4, .print-ticket .py-5 {
+            padding-top: 5px !important;
+            padding-bottom: 5px !important;
+          }
+          .print-ticket .space-y-4 > :not([hidden]) ~ :not([hidden]),
+          .print-ticket .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 4px !important;
+          }
+          .print-ticket .mb-6, .print-ticket .mb-8 {
+            margin-bottom: 4px !important;
+          }
+          .print-ticket .gap-6, .print-ticket .gap-8 {
+            gap: 6px !important;
+          }
+          .print-ticket .text-3xl {
+            font-size: 15pt !important;
+          }
+          .print-ticket .text-2xl {
+            font-size: 13pt !important;
+          }
+          .print-ticket .text-xl {
+            font-size: 11pt !important;
           }
         }
       `}</style>

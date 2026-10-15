@@ -3,6 +3,7 @@ import { BadRequestError, NotFoundError, ForbiddenError, ConflictError } from '.
 import { Prisma } from '@prisma/client';
 import { NotificationService } from './notificationService.js';
 import { PricingService } from './pricingService.js';
+import { MAX_PASSENGERS_PER_BOOKING, SEAT_LIMIT_WARNING_MESSAGE } from '../utils/constants.js';
 
 export class BookingService {
   /**
@@ -18,79 +19,40 @@ export class BookingService {
     const { flightInstanceId, adultCount, childCount, cabinClass = 'ECONOMY', selectedSeats = [] } = params;
     const totalPassengers = adultCount + childCount;
 
-    const instance = await prisma.flightInstance.findUnique({
-      where: { id: flightInstanceId },
-      include: {
-        flight: {
-          include: { aircraftConfig: true },
-        },
-      },
-    });
-
-    if (!instance) {
-      throw new NotFoundError('Flight departure not found');
-    }
-
-    if (instance.availableSeats < totalPassengers) {
-      throw new BadRequestError(`Only ${instance.availableSeats} seat(s) remaining on this flight.`);
-    }
-
-    // Dynamic pricing adjustment (Holiday / Weekend / Peak rules)
-    const pricing = await PricingService.calculateDynamicMultiplier({
-      travelDate: instance.travelDate,
-      route: `${instance.flight.origin}-${instance.flight.destination}`,
+    const fare = await PricingService.calculateItineraryFare({
+      flightInstanceId,
+      adultCount,
+      childCount,
       cabinClass,
+      selectedSeats,
     });
 
-    const baseAdultFare = Math.round(instance.adultFare.toNumber() * pricing.baseMultiplier);
-    const baseChildFare = Math.round(instance.childFare.toNumber() * pricing.baseMultiplier);
-
-    const adultSubtotal = baseAdultFare * adultCount;
-    const childSubtotal = baseChildFare * childCount;
-    const baseTotal = adultSubtotal + childSubtotal;
-
-    // Standard aviation taxes & airport fees (₹350 per passenger)
-    const taxesAndFees = 350 * totalPassengers;
-
-    // Seat charges calculation if specific seats are selected
-    let seatCharges = 0;
-    if (selectedSeats && selectedSeats.length > 0) {
-      const seats = await prisma.flightSeat.findMany({
-        where: {
-          flightInstanceId,
-          seatNumber: { in: selectedSeats },
-        },
-      });
-
-      for (const s of seats) {
-        seatCharges += s.price.toNumber();
-      }
+    if (fare.availableSeats < totalPassengers) {
+      throw new BadRequestError(`Only ${fare.availableSeats} seat(s) remaining on this flight.`);
     }
-
-    const grandTotal = baseTotal + taxesAndFees + seatCharges;
 
     return {
-      flightInstanceId,
-      flightCode: instance.flight.flightCode,
-      origin: instance.flight.origin,
-      destination: instance.flight.destination,
-      travelDate: instance.travelDate.toISOString().slice(0, 10),
-      departureTime: instance.departureTime,
-      arrivalTime: instance.arrivalTime,
-      availableSeats: instance.availableSeats,
+      flightInstanceId: fare.flightInstanceId,
+      flightCode: fare.flightCode,
+      origin: fare.origin,
+      destination: fare.destination,
+      travelDate: fare.travelDate,
+      departureTime: fare.departureTime,
+      arrivalTime: fare.arrivalTime,
+      availableSeats: fare.availableSeats,
       adultCount,
       childCount,
       cabinClass,
       breakdown: {
-        baseAdultFare,
-        baseChildFare,
-        adultSubtotal,
-        childSubtotal,
-        baseTotal,
-        taxesAndFees,
-        seatCharges,
-        grandTotal,
-        appliedRules: pricing.appliedRules,
+        baseAdultFare: fare.baseAdultFare,
+        baseChildFare: fare.baseChildFare,
+        adultSubtotal: fare.adultSubtotal,
+        childSubtotal: fare.childSubtotal,
+        baseTotal: fare.baseTotal,
+        taxesAndFees: fare.taxesAndFees,
+        seatCharges: fare.seatCharges,
+        grandTotal: fare.grandTotal,
+        appliedRules: fare.appliedRules,
       },
       baggage: {
         cabin: cabinClass === 'BUSINESS' ? '12 Kg' : '7 Kg',
@@ -146,6 +108,10 @@ export class BookingService {
       throw new BadRequestError('At least one passenger is required.');
     }
 
+    if (totalPassengers > MAX_PASSENGERS_PER_BOOKING) {
+      throw new BadRequestError(SEAT_LIMIT_WARNING_MESSAGE(MAX_PASSENGERS_PER_BOOKING));
+    }
+
     if (passengers.length !== totalPassengers) {
       throw new BadRequestError('Passenger count does not match the provided passenger list.');
     }
@@ -154,7 +120,32 @@ export class BookingService {
       ? returnPassengers
       : passengers;
 
+    // Validate seat counts and duplicate seat selections
+    const outboundSeats = passengers.filter((p) => p.seatNumber).map((p) => p.seatNumber!.toUpperCase().trim());
+    if (new Set(outboundSeats).size !== outboundSeats.length) {
+      throw new BadRequestError('Duplicate seats selected. Each passenger must have a unique seat.');
+    }
+    if (outboundSeats.length > totalPassengers) {
+      throw new BadRequestError(SEAT_LIMIT_WARNING_MESSAGE(totalPassengers));
+    }
+
+    const retSeats = retPassengers.filter((p) => p.seatNumber).map((p) => p.seatNumber!.toUpperCase().trim());
+    if (new Set(retSeats).size !== retSeats.length) {
+      throw new BadRequestError('Duplicate return seats selected. Each passenger must have a unique seat.');
+    }
+    if (retSeats.length > totalPassengers) {
+      throw new BadRequestError(SEAT_LIMIT_WARNING_MESSAGE(totalPassengers));
+    }
+
     const result = await prisma.$transaction(async (tx) => {
+      // 0. Fetch registered user contact details if not explicitly provided
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { email: true, mobileNumber: true },
+      });
+      const effectiveEmail = contactEmail || user?.email || null;
+      const effectivePhone = contactPhone || user?.mobileNumber || null;
+
       // 1. Atomic decrement of available seats for outbound flight
       const updateResult = await tx.$executeRaw`
         UPDATE flight_instances
@@ -195,36 +186,20 @@ export class BookingService {
         throw new NotFoundError('Outbound flight departure instance not found.');
       }
 
-      // 3. Outbound fare calculation
-      let multiplier = 1.0;
-      if (cabinClass === 'PREMIUM_ECONOMY') multiplier = 1.25;
-      if (cabinClass === 'BUSINESS') multiplier = 1.8;
-      if (cabinClass === 'FIRST_CLASS') multiplier = 2.5;
+      // 3. Outbound fare calculation using authoritative PricingService
+      const outboundFare = await PricingService.calculateItineraryFare({
+        flightInstanceId,
+        adultCount,
+        childCount,
+        cabinClass,
+        selectedSeats: outboundSeats,
+        db: tx,
+      });
 
-      const adultFare = Math.round(instance.adultFare.toNumber() * multiplier);
-      const childFare = Math.round(instance.childFare.toNumber() * multiplier);
-      const taxesAndFees = 350 * totalPassengers;
-
-      let seatCharges = 0;
-      const seatNumbers = passengers.filter((p) => p.seatNumber).map((p) => p.seatNumber!.toUpperCase().trim());
-
-      if (seatNumbers.length > 0) {
-        for (const sNum of seatNumbers) {
-          const seatRecord = await tx.flightSeat.findUnique({
-            where: {
-              flightInstanceId_seatNumber: {
-                flightInstanceId,
-                seatNumber: sNum,
-              },
-            },
-          });
-          if (seatRecord) {
-            seatCharges += seatRecord.price.toNumber();
-          }
-        }
-      }
-
-      const totalAmount = new Prisma.Decimal(adultFare * adultCount + childFare * childCount + taxesAndFees + seatCharges);
+      const adultFare = outboundFare.baseAdultFare;
+      const childFare = outboundFare.baseChildFare;
+      const seatCharges = outboundFare.seatCharges;
+      const totalAmount = new Prisma.Decimal(outboundFare.grandTotal);
 
       // 4. Generate outbound booking reference & PNR
       const now = new Date();
@@ -245,8 +220,8 @@ export class BookingService {
           adultCount,
           childCount,
           cabinClass,
-          contactEmail: contactEmail || null,
-          contactPhone: contactPhone || null,
+          contactEmail: effectiveEmail,
+          contactPhone: effectivePhone,
           paymentStatus: initialPaymentStatus,
           paymentMethod,
           adultFareSnapshot: new Prisma.Decimal(adultFare),
@@ -260,7 +235,7 @@ export class BookingService {
               type: p.type,
               gender: p.gender || null,
               age: p.age || null,
-              seatNumber: p.seatNumber || null,
+              seatNumber: p.seatNumber ? p.seatNumber.toUpperCase().trim() : null,
               isCancelled: false,
             })),
           },
@@ -282,13 +257,15 @@ export class BookingService {
         },
       });
 
-      // 6. Lock assigned outbound seats
+      // 6. Concurrency-safe atomic lock of assigned outbound seats
       for (const p of booking.passengers) {
         if (p.seatNumber) {
-          await tx.flightSeat.updateMany({
+          const sNum = p.seatNumber.toUpperCase().trim();
+          const seatUpdate = await tx.flightSeat.updateMany({
             where: {
               flightInstanceId,
-              seatNumber: p.seatNumber,
+              seatNumber: sNum,
+              status: 'AVAILABLE',
             },
             data: {
               status: 'OCCUPIED',
@@ -296,6 +273,10 @@ export class BookingService {
               passengerId: p.id,
             },
           });
+
+          if (seatUpdate.count === 0) {
+            throw new ConflictError(`Seat ${sNum} is no longer available on this flight. Please select another seat.`);
+          }
         }
       }
 
@@ -311,30 +292,20 @@ export class BookingService {
           throw new NotFoundError('Return flight departure instance not found.');
         }
 
-        const retAdultFare = Math.round(returnInstance.adultFare.toNumber() * multiplier);
-        const retChildFare = Math.round(returnInstance.childFare.toNumber() * multiplier);
-        const retTaxes = 350 * totalPassengers;
+        const returnFare = await PricingService.calculateItineraryFare({
+          flightInstanceId: returnFlightInstanceId,
+          adultCount,
+          childCount,
+          cabinClass,
+          selectedSeats: retSeats,
+          db: tx,
+        });
 
-        let retSeatCharges = 0;
-        const retSeatNumbers = retPassengers.filter((p) => p.seatNumber).map((p) => p.seatNumber!.toUpperCase().trim());
+        const retAdultFare = returnFare.baseAdultFare;
+        const retChildFare = returnFare.baseChildFare;
+        const retSeatCharges = returnFare.seatCharges;
+        const retTotalAmount = new Prisma.Decimal(returnFare.grandTotal);
 
-        if (retSeatNumbers.length > 0) {
-          for (const sNum of retSeatNumbers) {
-            const seatRecord = await tx.flightSeat.findUnique({
-              where: {
-                flightInstanceId_seatNumber: {
-                  flightInstanceId: returnFlightInstanceId,
-                  seatNumber: sNum,
-                },
-              },
-            });
-            if (seatRecord) {
-              retSeatCharges += seatRecord.price.toNumber();
-            }
-          }
-        }
-
-        const retTotalAmount = new Prisma.Decimal(retAdultFare * adultCount + retChildFare * childCount + retTaxes + retSeatCharges);
         const retRandomSuffix = Math.floor(1000 + Math.random() * 9000);
         const retBookingReference = `CF${datePart}${retRandomSuffix}R`;
         const retPnr = `CF${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -348,8 +319,8 @@ export class BookingService {
             adultCount,
             childCount,
             cabinClass,
-            contactEmail: contactEmail || null,
-            contactPhone: contactPhone || null,
+            contactEmail: effectiveEmail,
+            contactPhone: effectivePhone,
             paymentStatus: initialPaymentStatus,
             paymentMethod,
             adultFareSnapshot: new Prisma.Decimal(retAdultFare),
@@ -363,7 +334,7 @@ export class BookingService {
                 type: p.type,
                 gender: p.gender || null,
                 age: p.age || null,
-                seatNumber: p.seatNumber || null,
+                seatNumber: p.seatNumber ? p.seatNumber.toUpperCase().trim() : null,
                 isCancelled: false,
               })),
             },
@@ -385,13 +356,15 @@ export class BookingService {
           },
         });
 
-        // Lock assigned return seats
+        // Concurrency-safe atomic lock of assigned return seats
         for (const p of returnBookingRecord.passengers) {
           if (p.seatNumber) {
-            await tx.flightSeat.updateMany({
+            const sNum = p.seatNumber.toUpperCase().trim();
+            const seatUpdate = await tx.flightSeat.updateMany({
               where: {
                 flightInstanceId: returnFlightInstanceId,
-                seatNumber: p.seatNumber,
+                seatNumber: sNum,
+                status: 'AVAILABLE',
               },
               data: {
                 status: 'OCCUPIED',
@@ -399,8 +372,21 @@ export class BookingService {
                 passengerId: p.id,
               },
             });
+
+            if (seatUpdate.count === 0) {
+              throw new ConflictError(`Return flight seat ${sNum} is no longer available. Please select another seat.`);
+            }
           }
         }
+
+        // Link outbound to return booking via audit event
+        await tx.bookingEvent.create({
+          data: {
+            bookingId: booking.id,
+            eventType: 'ROUND_TRIP_LINK',
+            details: `Linked return booking reference: ${retBookingReference}`,
+          },
+        });
       }
 
       // 8. If GPAY_QR, initialize a Payment record in PENDING_VERIFICATION
@@ -439,6 +425,21 @@ export class BookingService {
           departureTime: result.flightInstance.departureTime,
           totalAmount: result.totalAmount.toNumber().toLocaleString('en-IN'),
         });
+
+        if (result.returnBooking) {
+          await NotificationService.notifyBookingConfirmation({
+            email: result.returnBooking.contactEmail,
+            phone: result.returnBooking.contactPhone,
+            bookingReference: result.returnBooking.bookingReference,
+            pnr: result.returnBooking.pnr,
+            flightCode: result.returnBooking.flightInstance.flight.flightCode,
+            origin: result.returnBooking.flightInstance.flight.origin,
+            destination: result.returnBooking.flightInstance.flight.destination,
+            travelDate: result.returnBooking.flightInstance.travelDate.toISOString().slice(0, 10),
+            departureTime: result.returnBooking.flightInstance.departureTime,
+            totalAmount: result.returnBooking.totalAmount.toNumber().toLocaleString('en-IN'),
+          });
+        }
       } catch (e) {
         console.warn('Booking confirmation notification error:', e);
       }
@@ -564,13 +565,14 @@ export class BookingService {
   }
 
   /**
-   * Cancel entire booking and release inventory (legacy or direct)
+   * Cancel entire booking and release inventory.
+   * If part of a round-trip, atomically cancels both outbound and return legs.
    */
   static async cancelEntireBooking(bookingId: string, userId: string, isAdmin = false) {
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
-        include: { passengers: true },
+        include: { passengers: true, auditEvents: true },
       });
 
       if (!booking) {
@@ -583,6 +585,37 @@ export class BookingService {
 
       if (booking.status === 'CANCELLED') {
         throw new BadRequestError('This booking has already been cancelled.');
+      }
+
+      // Check for linked round-trip booking
+      let linkedBookingRef: string | null = null;
+      for (const ev of booking.auditEvents) {
+        const linkMatch =
+          ev.details.match(/Linked return booking reference:\s*(CF[0-9A-Za-z]+)/i) ||
+          ev.details.match(/Linked to outbound booking\s*(CF[0-9A-Za-z]+)/i);
+        if (linkMatch) {
+          linkedBookingRef = linkMatch[1];
+          break;
+        }
+      }
+
+      let linkedBooking = null;
+      if (linkedBookingRef) {
+        linkedBooking = await tx.booking.findUnique({
+          where: { bookingReference: linkedBookingRef },
+          include: { passengers: true },
+        });
+      } else if (booking.bookingReference.endsWith('R')) {
+        // Find outbound booking that linked to this return booking
+        const linkingEvent = await tx.bookingEvent.findFirst({
+          where: {
+            details: { contains: booking.bookingReference },
+          },
+          include: { booking: { include: { passengers: true } } },
+        });
+        if (linkingEvent?.booking && linkingEvent.booking.status !== 'CANCELLED') {
+          linkedBooking = linkingEvent.booking;
+        }
       }
 
       const seatsToRelease = booking.adultCount + booking.childCount;
@@ -639,8 +672,74 @@ export class BookingService {
         },
       });
 
-      return updatedBooking;
+      // If linked booking exists and not yet cancelled, cancel it as well (round-trip full cancellation)
+      if (linkedBooking && linkedBooking.status !== 'CANCELLED') {
+        const linkedSeatsToRelease = linkedBooking.adultCount + linkedBooking.childCount;
+        if (linkedSeatsToRelease > 0) {
+          await tx.$executeRaw`
+            UPDATE flight_instances
+            SET "availableSeats" = "availableSeats" + ${linkedSeatsToRelease},
+                "updatedAt" = NOW()
+            WHERE id = ${linkedBooking.flightInstanceId}
+          `;
+        }
+
+        await tx.flightSeat.updateMany({
+          where: { bookingId: linkedBooking.id },
+          data: {
+            status: 'AVAILABLE',
+            bookingId: null,
+            passengerId: null,
+          },
+        });
+
+        await tx.passenger.updateMany({
+          where: { bookingId: linkedBooking.id, isCancelled: false },
+          data: { isCancelled: true },
+        });
+
+        await tx.booking.update({
+          where: { id: linkedBooking.id },
+          data: {
+            status: 'CANCELLED',
+            adultCount: 0,
+            childCount: 0,
+            cancelledAt: new Date(),
+            auditEvents: {
+              create: {
+                eventType: 'FULL_CANCELLATION',
+                details: `Linked round-trip flight leg cancelled. Released ${linkedSeatsToRelease} seat(s).`,
+              },
+            },
+          },
+        });
+      }
+
+      // Customer notifications
+      const user = await tx.user.findUnique({
+        where: { id: booking.userId },
+        select: { email: true, mobileNumber: true },
+      });
+
+      const recipientEmail = booking.contactEmail || user?.email;
+      const recipientPhone = booking.contactPhone || user?.mobileNumber;
+
+      return { updatedBooking, recipientEmail, recipientPhone, totalAmount: booking.totalAmount.toNumber() };
     });
+
+    try {
+      await NotificationService.notifyCancellation({
+        email: result.recipientEmail,
+        phone: result.recipientPhone,
+        bookingReference: result.updatedBooking.bookingReference,
+        refundAmount: result.totalAmount.toLocaleString('en-IN'),
+        cancellationFee: '0',
+      });
+    } catch (err) {
+      console.warn('Cancellation notification error:', err);
+    }
+
+    return result.updatedBooking;
   }
 
   /**
@@ -654,7 +753,7 @@ export class BookingService {
   ) {
     const { cancelAdults, cancelChildren } = params;
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
         include: { passengers: true },
@@ -767,11 +866,34 @@ export class BookingService {
         },
       });
 
+      const user = await tx.user.findUnique({
+        where: { id: booking.userId },
+        select: { email: true, mobileNumber: true },
+      });
+
       return {
         booking: updated,
         refundAmount,
         seatsReleased: seatsToRelease,
+        recipientEmail: booking.contactEmail || user?.email,
+        recipientPhone: booking.contactPhone || user?.mobileNumber,
       };
     });
+
+    if ('booking' in result) {
+      try {
+        await NotificationService.notifyCancellation({
+          email: result.recipientEmail,
+          phone: result.recipientPhone,
+          bookingReference: result.booking.bookingReference,
+          refundAmount: result.refundAmount.toLocaleString('en-IN'),
+          cancellationFee: '0',
+        });
+      } catch (err) {
+        console.warn('Partial cancellation notification error:', err);
+      }
+    }
+
+    return result;
   }
 }

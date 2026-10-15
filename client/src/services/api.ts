@@ -56,6 +56,8 @@ export const flightApi = {
     travelDate: string;
     adults: number;
     children: number;
+    tripType?: string;
+    returnDate?: string;
   }) => api.get('/flights/search', { params }),
   getCities: () => api.get('/flights/cities'),
   getInstanceById: (id: string, params?: { adults?: number; children?: number }) =>

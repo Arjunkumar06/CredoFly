@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, TokenPayload } from '../utils/auth.js';
 import { UnauthorizedError, ForbiddenError } from '../utils/errors.js';
@@ -50,6 +51,16 @@ export function optionalCustomerAuth(req: AuthRequest, res: Response, next: Next
   next();
 }
 
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) {
+    crypto.timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export function requireAdminBasicAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
@@ -67,7 +78,10 @@ export function requireAdminBasicAuth(req: AuthRequest, res: Response, next: Nex
     const expectedAdminUser = process.env.ADMIN_USERNAME || 'admin';
     const expectedAdminPass = process.env.ADMIN_PASSWORD || 'adminpassword123';
 
-    if (username !== expectedAdminUser || password !== expectedAdminPass) {
+    const userMatch = safeCompare(username, expectedAdminUser);
+    const passMatch = safeCompare(password, expectedAdminPass);
+
+    if (!userMatch || !passMatch) {
       res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
       return next(new UnauthorizedError('Invalid administrator credentials'));
     }

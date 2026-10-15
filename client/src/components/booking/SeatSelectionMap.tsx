@@ -8,17 +8,11 @@ import {
   User,
   ShieldAlert,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { flightApi } from '../../services/api';
 import { SeatMapItem, AircraftSeatMapResponse } from '../../types';
-
-interface PassengerSelection {
-  index: number;
-  name: string;
-  type: 'ADULT' | 'CHILD';
-  selectedSeatNumber?: string;
-  seatPrice?: number;
-}
+import { MAX_SEATS_PER_BOOKING, SEAT_LIMIT_WARNING_MESSAGE } from '../../constants';
 
 interface SeatSelectionMapProps {
   flightInstanceId: string;
@@ -38,6 +32,10 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
   const [seatData, setSeatData] = useState<AircraftSeatMapResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
+
+  // Maximum allowed seats for this party (capped at passenger count, up to MAX_SEATS_PER_BOOKING)
+  const maxAllowedSeats = Math.min(passengers.length, MAX_SEATS_PER_BOOKING);
 
   // Passenger selection state
   const [activePassengerIdx, setActivePassengerIdx] = useState<number>(0);
@@ -76,35 +74,62 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
   const handleSeatClick = (seat: SeatMapItem) => {
     if (seat.isOccupied || seat.isBlocked) return;
 
-    // Check if this seat is already chosen by another passenger in this booking
+    const currentSeatOfActive = assignedSeats[activePassengerIdx]?.seatNumber;
+    const isClickingCurrentSeat = currentSeatOfActive === seat.seatNumber;
+
+    // 1. If clicking current passenger's seat -> Deselect it
+    if (isClickingCurrentSeat) {
+      const updated = [...assignedSeats];
+      updated[activePassengerIdx] = { seatNumber: undefined, seatPrice: 0 };
+      setAssignedSeats(updated);
+      setWarningMessage(null);
+      return;
+    }
+
+    // 2. Check if seat is currently assigned to another passenger in this party
     const alreadyChosenByIdx = assignedSeats.findIndex(
       (a, i) => i !== activePassengerIdx && a.seatNumber === seat.seatNumber
     );
 
+    // Count currently assigned seats
+    const currentAssignedCount = assignedSeats.filter((a) => !!a.seatNumber).length;
+
+    // 3. Enforce maximum seat limit
+    // If seat is not currently assigned to anyone in the party, and we are adding a new seat:
+    // Check if adding this seat exceeds the allowed limit
+    const isAddingNewSeat = alreadyChosenByIdx === -1 && !currentSeatOfActive;
+    if (isAddingNewSeat && currentAssignedCount >= maxAllowedSeats) {
+      setWarningMessage(SEAT_LIMIT_WARNING_MESSAGE(maxAllowedSeats));
+      return;
+    }
+
+    // If active passenger already has a seat and all seats are filled, do not silently replace another seat
+    if (currentSeatOfActive && currentAssignedCount >= maxAllowedSeats && alreadyChosenByIdx === -1) {
+      setWarningMessage(SEAT_LIMIT_WARNING_MESSAGE(maxAllowedSeats));
+      return;
+    }
+
+    // Perform assignment safely
     const updated = [...assignedSeats];
 
     if (alreadyChosenByIdx !== -1) {
-      // Unassign from that passenger
+      // Swap or unassign from previous passenger
       updated[alreadyChosenByIdx] = { seatNumber: undefined, seatPrice: 0 };
     }
 
-    // If active passenger clicks on their current seat, toggle off
-    if (updated[activePassengerIdx]?.seatNumber === seat.seatNumber) {
-      updated[activePassengerIdx] = { seatNumber: undefined, seatPrice: 0 };
-    } else {
-      updated[activePassengerIdx] = {
-        seatNumber: seat.seatNumber,
-        seatPrice: seat.price,
-      };
-
-      // Automatically advance to next passenger without a seat
-      const nextUnassigned = updated.findIndex((a, idx) => idx > activePassengerIdx && !a.seatNumber);
-      if (nextUnassigned !== -1) {
-        setActivePassengerIdx(nextUnassigned);
-      }
-    }
+    updated[activePassengerIdx] = {
+      seatNumber: seat.seatNumber,
+      seatPrice: seat.price,
+    };
 
     setAssignedSeats(updated);
+    setWarningMessage(null);
+
+    // Automatically advance to next passenger who does not have a seat yet
+    const nextUnassigned = updated.findIndex((a, idx) => idx !== activePassengerIdx && !a.seatNumber);
+    if (nextUnassigned !== -1) {
+      setActivePassengerIdx(nextUnassigned);
+    }
   };
 
   const handleClearSeat = (idx: number, e: React.MouseEvent) => {
@@ -112,6 +137,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
     const updated = [...assignedSeats];
     updated[idx] = { seatNumber: undefined, seatPrice: 0 };
     setAssignedSeats(updated);
+    setWarningMessage(null);
   };
 
   const getCol = (s: SeatMapItem) => s.columnLetter || s.seatNumber?.replace(/^[0-9]+/, '') || '';
@@ -119,6 +145,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
   const isSeatBlocked = (s: SeatMapItem) => s.isBlocked ?? ((s as any).status === 'BLOCKED');
   const isExit = (s: SeatMapItem) => s.isExitRow ?? ((s as any).features?.includes('EXIT_ROW') || s.rowNumber === 12 || s.rowNumber === 13);
 
+  const selectedCount = assignedSeats.filter((a) => !!a.seatNumber).length;
   const totalSeatFee = assignedSeats.reduce((sum, item) => sum + (item.seatPrice || 0), 0);
 
   const getSeatColor = (seat: SeatMapItem) => {
@@ -183,7 +210,10 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                 Select Your Flight Seats
               </h3>
               <p className="text-xs text-slate-400">
-                {seatData?.aircraft.name || 'Airbus A320neo'} &bull; Layout: {seatData?.aircraft.seatLayout || '3-3'}
+                {seatData?.aircraft.name || 'Airbus A320neo'} &bull; Layout: {seatData?.aircraft.seatLayout || '3-3'} &bull;{' '}
+                <span className="text-blue-300 font-semibold">
+                  {selectedCount} of {maxAllowedSeats} seats selected
+                </span>
               </p>
             </div>
           </div>
@@ -195,11 +225,32 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
           </button>
         </div>
 
+        {/* Warning Alert Banner (Seat Limit Enforced) */}
+        {warningMessage && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between text-amber-900 text-xs font-semibold animate-fadeIn">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>{warningMessage}</span>
+            </div>
+            <button
+              onClick={() => setWarningMessage(null)}
+              className="text-amber-700 hover:text-amber-900 p-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Passenger Selection Strip */}
         <div className="bg-slate-50 border-b border-slate-200 p-3 sm:px-6">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-            Select Passenger to Assign Seat:
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Select Passenger to Assign Seat:
+            </p>
+            <span className="text-[11px] font-bold text-slate-600">
+              Limit: {maxAllowedSeats} Seat{maxAllowedSeats > 1 ? 's' : ''} Max
+            </span>
+          </div>
           <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
             {passengers.map((p, idx) => {
               const assigned = assignedSeats[idx];
@@ -208,7 +259,10 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => setActivePassengerIdx(idx)}
+                  onClick={() => {
+                    setActivePassengerIdx(idx);
+                    setWarningMessage(null);
+                  }}
                   className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition border flex-shrink-0 ${
                     isCurrent
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
@@ -228,10 +282,14 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                       }`}
                     >
                       <span>{assigned.seatNumber}</span>
-                      <X
-                        className="w-3 h-3 hover:text-rose-500 cursor-pointer ml-1"
+                      <button
+                        type="button"
                         onClick={(e) => handleClearSeat(idx, e)}
-                      />
+                        title="Deselect seat"
+                        className="inline-flex items-center"
+                      >
+                        <X className="w-3 h-3 hover:text-rose-500 cursor-pointer ml-1" />
+                      </button>
                     </span>
                   ) : (
                     <span className="text-[10px] text-amber-500 font-bold ml-1">
@@ -347,18 +405,20 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                             const seat = leftSeats.find((s) => getCol(s) === col);
                             if (!seat) return <div key={col} className="w-7 h-7 sm:w-8 sm:h-8"></div>;
 
+                            const isOccupied = isSeatOccupied(seat) || isSeatBlocked(seat);
+
                             return (
                               <button
                                 key={seat.id}
                                 type="button"
-                                disabled={isSeatOccupied(seat) || isSeatBlocked(seat)}
+                                disabled={isOccupied}
                                 onClick={() => handleSeatClick(seat)}
                                 onMouseEnter={() => setHoveredSeat(seat)}
                                 onMouseLeave={() => setHoveredSeat(null)}
                                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-[10px] font-bold border transition flex items-center justify-center ${getSeatColor(
                                   seat
                                 )}`}
-                                title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}`}
+                                title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}${isOccupied ? ' (Occupied)' : ''}`}
                               >
                                 {col}
                               </button>
@@ -377,18 +437,20 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
                             const seat = rightSeats.find((s) => getCol(s) === col);
                             if (!seat) return <div key={col} className="w-7 h-7 sm:w-8 sm:h-8"></div>;
 
+                            const isOccupied = isSeatOccupied(seat) || isSeatBlocked(seat);
+
                             return (
                               <button
                                 key={seat.id}
                                 type="button"
-                                disabled={isSeatOccupied(seat) || isSeatBlocked(seat)}
+                                disabled={isOccupied}
                                 onClick={() => handleSeatClick(seat)}
                                 onMouseEnter={() => setHoveredSeat(seat)}
                                 onMouseLeave={() => setHoveredSeat(null)}
                                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-[10px] font-bold border transition flex items-center justify-center ${getSeatColor(
                                   seat
                                 )}`}
-                                title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}`}
+                                title={`${seat.seatNumber} (${seat.tier}) - ₹${seat.price}${isOccupied ? ' (Occupied)' : ''}`}
                               >
                                 {col}
                               </button>
@@ -434,7 +496,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
             </div>
           ) : (
             <div className="text-slate-400 text-xs italic">
-              Hover over a seat to view features, legroom, and exact seat price.
+              Hover over a seat to view features, legroom, and exact seat price. Click to select or deselect.
             </div>
           )}
         </div>
@@ -443,7 +505,7 @@ export const SeatSelectionMap: React.FC<SeatSelectionMapProps> = ({
         <div className="bg-white p-4 sm:p-5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase">
-              Seat Selection Fee
+              Seat Selection Fee ({selectedCount} of {maxAllowedSeats} Seats)
             </p>
             <p className="text-xl font-black text-blue-600">
               ₹{totalSeatFee.toLocaleString('en-IN')}
