@@ -63,9 +63,12 @@ function safeCompare(a: string, b: string): boolean {
 
 export function requireAdminBasicAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
+  const isXhr = req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest';
 
   if (!authHeader || !authHeader.startsWith('Basic ')) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+    if (!isXhr) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+    }
     return next(new UnauthorizedError('Administrator Basic Authentication required'));
   }
 
@@ -78,18 +81,22 @@ export function requireAdminBasicAuth(req: AuthRequest, res: Response, next: Nex
     const expectedAdminUser = process.env.ADMIN_USERNAME || 'admin';
     const expectedAdminPass = process.env.ADMIN_PASSWORD || 'adminpassword123';
 
-    const userMatch = safeCompare(username, expectedAdminUser);
-    const passMatch = safeCompare(password, expectedAdminPass);
+    const userMatch = safeCompare(username.trim(), expectedAdminUser);
+    const passMatch = safeCompare(password.trim(), expectedAdminPass);
 
     if (!userMatch || !passMatch) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+      if (!isXhr) {
+        res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+      }
       return next(new UnauthorizedError('Invalid administrator credentials'));
     }
 
     req.isAdmin = true;
     next();
   } catch (err) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+    if (!isXhr) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="CredoFly Admin"');
+    }
     return next(new UnauthorizedError('Failed to parse administrator credentials'));
   }
 }
