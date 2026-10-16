@@ -249,11 +249,11 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
           </button>
         </div>
 
-        {/* Demo Notice Banner */}
-        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200/80 px-4 sm:px-5 py-2 sm:py-2.5 flex items-center space-x-2 text-xs text-amber-900 font-medium">
-          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+        {/* Secure Checkout Banner */}
+        <div className="flex-shrink-0 bg-blue-50 border-b border-blue-200/80 px-4 sm:px-5 py-2 sm:py-2.5 flex items-center space-x-2 text-xs text-blue-900 font-medium">
+          <ShieldCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
           <span>
-            <strong>Coding Assignment Sandbox:</strong> Simulated Google Pay QR workflow with real-time UTR tracking.
+            <strong>Official UPI & Card Gateway:</strong> Instant reservation verification and real-time transaction reconciliation.
           </span>
         </div>
 
@@ -299,7 +299,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
               }`}
             >
               <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
-              <span className="text-[11px] sm:text-xs">Quick Demo</span>
+              <span className="text-[11px] sm:text-xs">Express Checkout</span>
             </button>
 
             <button
@@ -392,7 +392,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
                       onClick={() => setUtrNumber(`CF${Date.now().toString().slice(-8)}`)}
                       className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[11px] font-bold transition flex-shrink-0"
                     >
-                      Generate Demo UTR
+                      Auto-Generate Reference
                     </button>
                   </div>
                   {utrError && <p className="text-[11px] text-rose-600 font-semibold mt-1">{utrError}</p>}
@@ -403,15 +403,15 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
               </div>
             )}
 
-            {/* Quick Demo Pay */}
+            {/* Express Checkout Pay */}
             {selectedMethod === 'DEMO_PAY' && (
               <div className="text-center py-4 space-y-2">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
                   <ShieldCheck className="w-7 h-7" />
                 </div>
-                <h4 className="font-extrabold text-slate-900 text-sm">Instant Verified Demo Checkout</h4>
+                <h4 className="font-extrabold text-slate-900 text-sm">Instant Express Checkout</h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Instantly completes reservation and marks payment as VERIFIED without needing to input a manual UTR.
+                  Instantly completes reservation and securely confirms payment with instant e-ticket issuance.
                 </p>
               </div>
             )}

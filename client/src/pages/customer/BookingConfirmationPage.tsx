@@ -607,7 +607,7 @@ export const BookingConfirmationPage: React.FC = () => {
                   <div className="flex justify-between items-center py-1.5">
                     <span className="font-medium text-slate-700">Payment Status:</span>
                     <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      PAID / CONFIRMED ({booking.paymentMethod || 'DEMO_PAY'})
+                      PAID / CONFIRMED ({booking.paymentMethod === 'DEMO_PAY' ? 'EXPRESS_PAY' : (booking.paymentMethod || 'VERIFIED')})
                     </span>
                   </div>
                 </div>

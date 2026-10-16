@@ -25,6 +25,8 @@ router.put('/payment-config', AdminController.updatePaymentConfig);
 // 12-Month schedule generation & calendar inspection
 router.post('/generate-schedules', AdminController.generateSchedules);
 router.post('/schedules/generate', AdminController.generateSchedules);
+router.get('/calendar/overview', AdminController.getCalendarOverview);
+router.get('/calendar/date-details', AdminController.getCalendarDateDetails);
 router.get('/schedule/instances', AdminController.getScheduleInstances);
 router.patch('/schedule/instances/:id', AdminController.updateSingleFlightInstance);
 

@@ -126,7 +126,7 @@ export const adminApi = {
     api.get('/admin/verify', {
       headers: authHeader ? { Authorization: `Basic ${authHeader}` } : {},
     }),
-  getDashboard: () => api.get('/admin/dashboard'),
+  getDashboard: (params?: { date?: string }) => api.get('/admin/dashboard', { params }),
   getFlights: () => api.get('/admin/flights'),
   createFlight: (data: any) => api.post('/admin/flights', data),
   updateFlight: (id: string, data: any) => api.patch(`/admin/flights/${id}`, data),
@@ -141,6 +141,10 @@ export const adminApi = {
   cancelBooking: (id: string) => api.post(`/admin/bookings/${id}/cancel`),
   // Extended operations
   generateSchedules: (days?: number) => api.post('/admin/schedules/generate', { days }),
+  getCalendarOverview: (params: { year: number; month: number }) =>
+    api.get('/admin/calendar/overview', { params }),
+  getCalendarDateDetails: (params: { date: string }) =>
+    api.get('/admin/calendar/date-details', { params }),
   getScheduleInstances: (params?: { startDate?: string; endDate?: string; flightId?: string }) =>
     api.get('/admin/schedule/instances', { params }),
   updateSingleFlightInstance: (id: string, data: any) =>

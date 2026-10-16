@@ -90,7 +90,7 @@ export const RegisterPage: React.FC = () => {
     setError(null);
     try {
       const res = await authApi.google({
-        email: 'passenger.demo@gmail.com',
+        email: 'alex.rivera@credofly.com',
         name: 'Alex Rivera',
       });
 

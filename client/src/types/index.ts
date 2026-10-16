@@ -166,12 +166,170 @@ export interface Booking {
   returnBooking?: Booking | null;
 }
 
+export interface DashboardFlightSummary {
+  id: string;
+  flightCode: string;
+  airlineName: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  arrivalTime: string;
+  capacity: number;
+  availableSeats: number;
+  bookedSeats: number;
+  status: string;
+}
+
+export interface DashboardBookingSummary {
+  id: string;
+  bookingReference: string;
+  pnr: string;
+  customerName: string;
+  flightCode: string;
+  route: string;
+  departureTime: string;
+  passengerCount: number;
+  totalAmount: number;
+  status: string;
+  paymentStatus: string;
+  createdAt: string;
+}
+
 export interface DashboardStats {
+  selectedDate: string;
+  todayDate: string;
+  timezone: string;
+  currentDateTime: string;
+
+  // 12 Requested Operations Cards & Details
+  flightsScheduledToday: number;
+  totalFlightsOnDate: number;
+  bookingsMadeToday: number;
+  confirmedBookingsToday: number;
+  pendingBookingsToday: number;
+  cancelledBookingsToday: number;
+  travellingPassengersToday: number;
+  upcomingFlights: number;
+  completedFlights: number;
+  totalRegisteredUsers: number;
+  totalVerifiedRevenue: number;
+  verifiedRevenueDate: number;
+  availableSeatsToday: number;
+  totalCapacityToday: number;
+  occupiedSeatsToday: number;
+  occupancyRateToday: number;
+
+  flightsDepartingSoon: DashboardFlightSummary[];
+  recentBookingsOnDate: DashboardBookingSummary[];
+
+  // Backwards-compatible fields
   totalActiveFlights: number;
   upcomingFlightInstances: number;
   totalBookings: number;
   confirmedBookings: number;
   cancelledBookings: number;
+}
+
+export interface CalendarMonthSummary {
+  totalScheduledFlights: number;
+  totalBookings: number;
+  totalPassengers: number;
+  totalVerifiedRevenue: number;
+  monthlyOccupancyRate: number;
+  totalCapacity: number;
+  totalAvailableSeats: number;
+  occupiedSeats: number;
+}
+
+export interface CalendarDayOverview {
+  date: string;
+  flightCount: number;
+  bookingCount: number;
+  passengerCount: number;
+  hasCancelledFlights: boolean;
+  hasDelayedFlights: boolean;
+  isFullyBooked: boolean;
+  flightsSample: Array<{
+    id: string;
+    flightCode: string;
+    departureTime: string;
+    status: string;
+    availableSeats: number;
+  }>;
+}
+
+export interface CalendarOverviewResponse {
+  year: number;
+  month: number;
+  monthlySummary: CalendarMonthSummary;
+  days: Record<string, CalendarDayOverview>;
+}
+
+export interface CalendarFlightDetail {
+  id: string;
+  flightId: string;
+  flightCode: string;
+  airlineName: string;
+  origin: string;
+  destination: string;
+  travelDate: string;
+  departureTime: string;
+  arrivalTime: string;
+  capacity: number;
+  availableSeats: number;
+  bookedSeats: number;
+  occupancyRate: number;
+  adultFare: number;
+  childFare: number;
+  status: string;
+  bookingsCount: number;
+}
+
+export interface CalendarBookingPassenger {
+  name: string;
+  seatNumber: string;
+  isCancelled: boolean;
+  type: string;
+}
+
+export interface CalendarBookingDetail {
+  id: string;
+  bookingReference: string;
+  pnr: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  passengerCount: number;
+  passengers: CalendarBookingPassenger[];
+  flightCode: string;
+  route: string;
+  departureTime: string;
+  travelDate: string;
+  bookingStatus: string;
+  paymentStatus: string;
+  paymentMethod: string | null;
+  totalAmount: number;
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface CalendarDateDetailsResponse {
+  selectedDate: string;
+  dailySummary: {
+    totalFlights: number;
+    totalBookings: number;
+    confirmedBookings: number;
+    pendingBookings: number;
+    cancelledBookings: number;
+    travellingPassengers: number;
+    verifiedRevenue: number;
+    totalCapacity: number;
+    availableSeats: number;
+    occupiedSeats: number;
+    occupancyRate: number;
+  };
+  flights: CalendarFlightDetail[];
+  bookings: CalendarBookingDetail[];
 }
 
 export interface SeatMapItem {

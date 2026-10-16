@@ -87,7 +87,7 @@ export const Footer: React.FC = () => {
 
         <div className="border-t border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
           <p>&copy; {new Date().getFullYear()} CredoFly Airlines. All rights reserved.</p>
-          <p className="mt-2 sm:mt-0">Zutrula Coding Assignment Implementation</p>
+          <p className="mt-2 sm:mt-0">CredoFly Aviation Pvt Ltd • Commercial Airline Reservation Engine</p>
         </div>
       </div>
     </footer>

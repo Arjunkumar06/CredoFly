@@ -5,97 +5,149 @@ import {
   ChevronRight,
   Plane,
   Clock,
-  Plus,
   RefreshCw,
   Edit2,
   Check,
   AlertCircle,
   X,
-  Sparkles,
   Users,
-  ShieldAlert,
+  Search,
+  IndianRupee,
+  Percent,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Ticket,
+  Eye,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { adminApi } from '../../services/api';
+import {
+  CalendarOverviewResponse,
+  CalendarMonthSummary,
+  CalendarDayOverview,
+  CalendarDateDetailsResponse,
+  CalendarFlightDetail,
+  CalendarBookingDetail,
+} from '../../types';
 
-interface ScheduleInstance {
-  id: string;
-  flightId: string;
-  flightCode: string;
-  airlineName: string;
-  origin: string;
-  destination: string;
-  travelDate: string;
-  departureTime: string;
-  arrivalTime: string;
-  capacity: number;
-  availableSeats: number;
-  bookedSeats: number;
-  adultFare: number;
-  childFare: number;
-  status: string;
-  bookingsCount: number;
-}
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const MONTH_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 export const AdminSchedulePage: React.FC = () => {
-  // Current viewed month: default current year and month
-  const today = new Date();
-  const [currentDate, setCurrentDate] = useState<Date>(
-    new Date(today.getFullYear(), today.getMonth(), 1)
-  );
+  // Current real-world date in Asia/Kolkata
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 
-  const [instances, setInstances] = useState<ScheduleInstance[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [initialYear, initialMonth] = todayStr.split('-').map(Number);
+
+  // Calendar Year & Month State (1-indexed month: 1 = Jan, 12 = Dec)
+  const [selectedYear, setSelectedYear] = useState<number>(initialYear);
+  const [selectedMonth, setSelectedMonth] = useState<number>(initialMonth);
+
+  // Selected date for detailed view YYYY-MM-DD
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
+
+  // Calendar Overview Data
+  const [calendarOverview, setCalendarOverview] = useState<CalendarOverviewResponse | null>(null);
+  const [isLoadingOverview, setIsLoadingOverview] = useState<boolean>(true);
+
+  // Date Details Data
+  const [dateDetails, setDateDetails] = useState<CalendarDateDetailsResponse | null>(null);
+  const [isLoadingDateDetails, setIsLoadingDateDetails] = useState<boolean>(false);
+  const [activeDateTab, setActiveDateTab] = useState<'summary' | 'flights' | 'bookings'>('summary');
+
+  // Filters for Bookings inside Selected Date
+  const [bookingSearch, setBookingSearch] = useState<string>('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
+
+  // Notifications & Async Actions
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
-  // Selected instance for single editing modal / slide-over
-  const [selectedInstance, setSelectedInstance] = useState<ScheduleInstance | null>(null);
+  // Edit Single Flight Instance Modal State
+  const [selectedInstance, setSelectedInstance] = useState<CalendarFlightDetail | null>(null);
   const [editDepTime, setEditDepTime] = useState('');
   const [editArrTime, setEditArrTime] = useState('');
   const [editAdultFare, setEditAdultFare] = useState<number>(0);
   const [editChildFare, setEditChildFare] = useState<number>(0);
   const [editStatus, setEditStatus] = useState<string>('SCHEDULED');
+  const [editAvailableSeats, setEditAvailableSeats] = useState<number>(0);
   const [isSavingInstance, setIsSavingInstance] = useState<boolean>(false);
 
-  // Date selection state
-  const [selectedDateStr, setSelectedDateStr] = useState<string>(
-    today.toISOString().slice(0, 10)
-  );
+  // Passenger Modal Viewer State
+  const [viewingPassengers, setViewingPassengers] = useState<CalendarBookingDetail | null>(null);
 
-  // Filter state
-  const [flightFilter, setFlightFilter] = useState<string>('ALL');
-
+  // Load Month Overview when year or month changes
   useEffect(() => {
-    loadMonthSchedule();
-  }, [currentDate]);
+    loadMonthOverview(selectedYear, selectedMonth);
+  }, [selectedYear, selectedMonth]);
 
-  const loadMonthSchedule = async () => {
-    setIsLoading(true);
+  // Load Date Details when selectedDateStr changes
+  useEffect(() => {
+    if (selectedDateStr) {
+      loadDateDetails(selectedDateStr);
+    }
+  }, [selectedDateStr]);
+
+  const loadMonthOverview = async (year: number, month: number) => {
+    setIsLoadingOverview(true);
     setError(null);
     try {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-
-      // Start from first day of month to last day of month
-      const start = new Date(year, month, 1);
-      const end = new Date(year, month + 1, 0);
-
-      const startDateStr = start.toISOString().slice(0, 10);
-      const endDateStr = end.toISOString().slice(0, 10);
-
-      const res = await adminApi.getScheduleInstances({
-        startDate: startDateStr,
-        endDate: endDateStr,
-      });
-
+      const res = await adminApi.getCalendarOverview({ year, month });
       if (res.data.success) {
-        setInstances(res.data.instances || []);
+        setCalendarOverview(res.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load schedule calendar.');
+      setError(err.response?.data?.error || 'Failed to load calendar schedule overview.');
     } finally {
-      setIsLoading(false);
+      setIsLoadingOverview(false);
+    }
+  };
+
+  const loadDateDetails = async (dateStr: string) => {
+    setIsLoadingDateDetails(true);
+    try {
+      const res = await adminApi.getCalendarDateDetails({ date: dateStr });
+      if (res.data.success) {
+        setDateDetails(res.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to load date details:', err);
+    } finally {
+      setIsLoadingDateDetails(false);
     }
   };
 
@@ -107,9 +159,12 @@ export const AdminSchedulePage: React.FC = () => {
       const res = await adminApi.generateSchedules(365);
       if (res.data) {
         setSuccessMsg(
-          `Idempotent generation completed! Generated/verified flight instances for the next 12 months.`
+          'Idempotent schedule generation completed! Flight instances across 12 months verified and synchronized.'
         );
-        loadMonthSchedule();
+        loadMonthOverview(selectedYear, selectedMonth);
+        if (selectedDateStr) {
+          loadDateDetails(selectedDateStr);
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to generate 12-month schedules.');
@@ -119,20 +174,31 @@ export const AdminSchedulePage: React.FC = () => {
   };
 
   const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    if (selectedMonth === 1) {
+      setSelectedYear((prev) => prev - 1);
+      setSelectedMonth(12);
+    } else {
+      setSelectedMonth((prev) => prev - 1);
+    }
   };
 
   const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    if (selectedMonth === 12) {
+      setSelectedYear((prev) => prev + 1);
+      setSelectedMonth(1);
+    } else {
+      setSelectedMonth((prev) => prev + 1);
+    }
   };
 
-  const handleSelectInstanceForEdit = (inst: ScheduleInstance) => {
+  const handleSelectInstanceForEdit = (inst: CalendarFlightDetail) => {
     setSelectedInstance(inst);
     setEditDepTime(inst.departureTime);
     setEditArrTime(inst.arrivalTime);
     setEditAdultFare(inst.adultFare);
     setEditChildFare(inst.childFare);
     setEditStatus(inst.status);
+    setEditAvailableSeats(inst.availableSeats);
   };
 
   const handleSaveSingleInstance = async (e: React.FormEvent) => {
@@ -150,6 +216,7 @@ export const AdminSchedulePage: React.FC = () => {
         adultFare: Number(editAdultFare),
         childFare: Number(editChildFare),
         status: editStatus,
+        availableSeats: Number(editAvailableSeats),
       });
 
       if (res.data.success) {
@@ -157,7 +224,8 @@ export const AdminSchedulePage: React.FC = () => {
           `Updated flight departure for ${selectedInstance.flightCode} on ${selectedInstance.travelDate}. Changes applied exclusively to this flight instance without altering future schedules.`
         );
         setSelectedInstance(null);
-        loadMonthSchedule();
+        loadMonthOverview(selectedYear, selectedMonth);
+        loadDateDetails(selectedInstance.travelDate);
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update flight instance.');
@@ -166,42 +234,55 @@ export const AdminSchedulePage: React.FC = () => {
     }
   };
 
-  // Calendar geometry calculations
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthName = currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  // Calendar Geometry Calculations
+  // Month is 1-indexed (1..12), so Date.UTC(year, month - 1, 1)
+  const firstDayOfMonthUtc = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1));
+  const firstDayOfWeek = firstDayOfMonthUtc.getUTCDay(); // 0 = Sun, 1 = Mon ...
+  const totalDaysInMonth = new Date(Date.UTC(selectedYear, selectedMonth, 0)).getUTCDate();
 
-  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 = Sun
-  const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+  // Summary shortcuts
+  const monthlySummary: CalendarMonthSummary = calendarOverview?.monthlySummary || {
+    totalScheduledFlights: 0,
+    totalBookings: 0,
+    totalPassengers: 0,
+    totalVerifiedRevenue: 0,
+    monthlyOccupancyRate: 0,
+    totalCapacity: 0,
+    totalAvailableSeats: 0,
+    occupiedSeats: 0,
+  };
 
-  // Group instances by date YYYY-MM-DD
-  const instancesByDate = new Map<string, ScheduleInstance[]>();
-  instances.forEach((inst) => {
-    if (flightFilter !== 'ALL' && inst.flightCode !== flightFilter) return;
-    const list = instancesByDate.get(inst.travelDate) || [];
-    list.push(inst);
-    instancesByDate.set(inst.travelDate, list);
+  // Filtered Bookings for Selected Date
+  const filteredBookings = (dateDetails?.bookings || []).filter((b) => {
+    if (bookingStatusFilter !== 'ALL' && b.bookingStatus !== bookingStatusFilter) {
+      return false;
+    }
+    if (bookingSearch.trim() !== '') {
+      const query = bookingSearch.toLowerCase().trim();
+      const matchPnr = b.pnr?.toLowerCase().includes(query) || b.bookingReference.toLowerCase().includes(query);
+      const matchCustomer = b.customerName?.toLowerCase().includes(query) || b.customerEmail?.toLowerCase().includes(query);
+      const matchFlight = b.flightCode?.toLowerCase().includes(query);
+      return matchPnr || matchCustomer || matchFlight;
+    }
+    return true;
   });
 
-  const uniqueFlightCodes = Array.from(new Set(instances.map((i) => i.flightCode))).sort();
-  const selectedDateInstances = instancesByDate.get(selectedDateStr) || [];
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-200 gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
           <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold tracking-wide uppercase mb-2">
             <CalendarIcon className="w-3.5 h-3.5 text-blue-600" />
-            <span>Fleet Operations</span>
+            <span>Full-Year Fleet Operations</span>
           </div>
           <h1 className="text-2xl font-black text-navy-950">12-Month Flight Schedule Calendar</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            View live departures, generate yearly flight schedules idempotently, and manage single flight exceptions.
+            Full 12-month calendar navigation with live schedules, occupancy rates, passenger manifests, and flight overrides.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             disabled={isGenerating}
@@ -216,60 +297,207 @@ export const AdminSchedulePage: React.FC = () => {
 
       {/* Notifications */}
       {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-2xl flex items-center space-x-3 shadow-xs">
-          <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <span>{successMsg}</span>
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-2xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center space-x-3">
+            <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm rounded-2xl flex items-center space-x-3 shadow-xs">
-          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm rounded-2xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => setError(null)} className="text-rose-600 hover:text-rose-800">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Calendar Bar & Navigation */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* Monthly Overview Summary Cards (5 Key Metrics) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        {/* Total Scheduled Flights */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Scheduled Flights</span>
+            <Plane className="w-4 h-4 text-blue-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900">
+            {monthlySummary.totalScheduledFlights.toLocaleString()}
+          </p>
+          <span className="text-[10px] text-blue-600 font-semibold">
+            in {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+          </span>
+        </div>
+
+        {/* Total Bookings */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Month Bookings</span>
+            <Ticket className="w-4 h-4 text-indigo-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900">
+            {monthlySummary.totalBookings.toLocaleString()}
+          </p>
+          <span className="text-[10px] text-indigo-600 font-semibold">
+            orders confirmed & pending
+          </span>
+        </div>
+
+        {/* Total Passengers */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Passengers</span>
+            <Users className="w-4 h-4 text-violet-600" />
+          </div>
+          <p className="text-2xl font-black text-violet-800">
+            {monthlySummary.totalPassengers.toLocaleString()}
+          </p>
+          <span className="text-[10px] text-violet-600 font-semibold">
+            travelling in month
+          </span>
+        </div>
+
+        {/* Verified Revenue */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Verified Revenue</span>
+            <IndianRupee className="w-4 h-4 text-emerald-600" />
+          </div>
+          <p className="text-2xl font-black text-emerald-700">
+            ₹{monthlySummary.totalVerifiedRevenue.toLocaleString('en-IN')}
+          </p>
+          <span className="text-[10px] text-emerald-600 font-semibold">
+            settled payments
+          </span>
+        </div>
+
+        {/* Seat Occupancy Rate */}
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-1 col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Seat Occupancy</span>
+            <Percent className="w-4 h-4 text-blue-600" />
+          </div>
+          <p className="text-2xl font-black text-blue-600">
+            {monthlySummary.monthlyOccupancyRate}%
+          </p>
+          <div className="w-full bg-slate-100 rounded-full h-1 mt-1">
+            <div
+              className="bg-blue-600 h-1 rounded-full"
+              style={{ width: `${Math.min(100, monthlySummary.monthlyOccupancyRate)}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-slate-400">
+            {monthlySummary.occupiedSeats} / {monthlySummary.totalCapacity} seats
+          </span>
+        </div>
+      </div>
+
+      {/* Year & Month Navigation Bar */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          {/* Year selector & Prev/Next Month */}
           <div className="flex items-center space-x-2">
             <button
+              type="button"
               onClick={handlePrevMonth}
               className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition"
+              title="Previous Month"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <h2 className="text-lg sm:text-xl font-black text-navy-950 px-2 min-w-[200px] text-center">
-              {monthName}
-            </h2>
+
+            <div className="flex items-center space-x-2 px-2">
+              <span className="text-lg sm:text-xl font-black text-navy-950">
+                {MONTH_NAMES[selectedMonth - 1]}
+              </span>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="px-2.5 py-1 text-sm sm:text-base font-black text-navy-950 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <button
+              type="button"
               onClick={handleNextMonth}
               className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition"
+              title="Next Month"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedYear(initialYear);
+                setSelectedMonth(initialMonth);
+                setSelectedDateStr(todayStr);
+              }}
+              className="ml-2 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition border border-blue-200"
+            >
+              Current Month
+            </button>
           </div>
 
-          <div className="flex items-center space-x-3 w-full sm:w-auto">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-              Filter Flight:
-            </label>
-            <select
-              value={flightFilter}
-              onChange={(e) => setFlightFilter(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white"
-            >
-              <option value="ALL">All Flights ({instances.length} departures)</option>
-              {uniqueFlightCodes.map((code) => (
-                <option key={code} value={code}>
-                  Flight {code}
-                </option>
-              ))}
-            </select>
+          {/* Quick Date Display */}
+          <div className="flex items-center space-x-2 text-xs text-slate-500">
+            <span>Selected Date:</span>
+            <span className="font-bold text-navy-950 bg-slate-100 px-2.5 py-1 rounded-xl">
+              {new Date(selectedDateStr + 'T00:00:00').toLocaleDateString('en-US', {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
           </div>
         </div>
 
-        {/* 7-Day Header */}
+        {/* 12-Month Quick Tab Strip */}
+        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5">
+          {MONTH_SHORT.map((mShort, idx) => {
+            const mNum = idx + 1;
+            const isSelected = selectedMonth === mNum;
+            const isCurrentMonth = selectedYear === initialYear && initialMonth === mNum;
+
+            return (
+              <button
+                key={mShort}
+                type="button"
+                onClick={() => setSelectedMonth(mNum)}
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : isCurrentMonth
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <span>{mShort}</span>
+                {isCurrentMonth && (
+                  <span className={`text-[8px] font-extrabold uppercase ${isSelected ? 'text-blue-100' : 'text-blue-600'}`}>
+                    Now
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 7-Day Weekday Header */}
         <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs uppercase tracking-wider text-slate-400 py-2 border-b border-slate-100">
           <span>Sun</span>
           <span>Mon</span>
@@ -280,175 +508,512 @@ export const AdminSchedulePage: React.FC = () => {
           <span>Sat</span>
         </div>
 
-        {/* 35/42 Days Grid */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2">
-          {/* Empty spacer blocks for first week */}
-          {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
-            <div key={`spacer-${idx}`} className="min-h-[90px] sm:min-h-[110px] bg-slate-50/50 rounded-2xl border border-dashed border-slate-100 p-1"></div>
-          ))}
-
-          {/* Actual days */}
-          {Array.from({ length: totalDaysInMonth }).map((_, idx) => {
-            const dayNum = idx + 1;
-            const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-            const dayFlights = instancesByDate.get(dayStr) || [];
-            const isToday = dayStr === today.toISOString().slice(0, 10);
-            const isSelected = dayStr === selectedDateStr;
-
-            return (
+        {/* Calendar Grid (Days & Badges) */}
+        {isLoadingOverview ? (
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+            {Array.from({ length: 35 }).map((_, idx) => (
               <div
-                key={dayStr}
-                onClick={() => setSelectedDateStr(dayStr)}
-                className={`min-h-[90px] sm:min-h-[110px] rounded-2xl p-1.5 sm:p-2 border transition cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-sm'
-                    : isToday
-                    ? 'border-slate-300 bg-amber-50/30'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs font-black ${
-                      isToday
-                        ? 'w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center'
-                        : isSelected
-                        ? 'text-blue-700'
-                        : 'text-slate-700'
-                    }`}
-                  >
-                    {dayNum}
-                  </span>
-                  {dayFlights.length > 0 && (
-                    <span className="text-[10px] font-bold text-slate-400">
-                      {dayFlights.length} flt{dayFlights.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-
-                {/* Chips */}
-                <div className="space-y-1 mt-1 overflow-y-auto max-h-[70px] scrollbar-none">
-                  {dayFlights.slice(0, 3).map((f) => {
-                    const isCancelled = f.status === 'CANCELLED';
-                    const isDelayed = f.status === 'DELAYED';
-                    return (
-                      <div
-                        key={f.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectInstanceForEdit(f);
-                        }}
-                        className={`px-1.5 py-0.5 rounded-lg text-[9px] font-bold truncate transition border flex items-center justify-between ${
-                          isCancelled
-                            ? 'bg-rose-50 text-rose-700 border-rose-200 line-through'
-                            : isDelayed
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                            : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-blue-100 hover:text-blue-800'
-                        }`}
-                        title={`${f.flightCode} (${f.origin} → ${f.destination}) at ${f.departureTime}`}
-                      >
-                        <span>{f.flightCode}</span>
-                        <span className="font-mono text-[8px] opacity-75">{f.departureTime}</span>
-                      </div>
-                    );
-                  })}
-                  {dayFlights.length > 3 && (
-                    <div className="text-[9px] text-blue-600 font-bold text-center">
-                      +{dayFlights.length - 3} more
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Date Details Panel */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
-          <div>
-            <h3 className="text-base font-black text-navy-950 flex items-center space-x-2">
-              <CalendarIcon className="w-4 h-4 text-blue-600" />
-              <span>Departures for {selectedDateStr}</span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              {selectedDateInstances.length} scheduled flight departures found for this day.
-            </p>
-          </div>
-        </div>
-
-        {selectedDateInstances.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            No scheduled departures on this date. Click &quot;Generate 12-Month Schedules&quot; above to populate recurring flights.
+                key={idx}
+                className="min-h-[95px] sm:min-h-[115px] bg-slate-50/70 rounded-2xl animate-pulse border border-slate-100"
+              />
+            ))}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Flight</th>
-                  <th className="py-2.5 px-3">Route</th>
-                  <th className="py-2.5 px-3">Departure / Arrival</th>
-                  <th className="py-2.5 px-3">Available / Capacity</th>
-                  <th className="py-2.5 px-3">Adult / Child Fare</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {selectedDateInstances.map((f) => (
-                  <tr key={f.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3 px-3 font-extrabold text-navy-950">
-                      {f.flightCode}
-                    </td>
-                    <td className="py-3 px-3 font-medium text-slate-700">
-                      {f.origin} &rarr; {f.destination}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-slate-800">
-                      {f.departureTime} - {f.arrivalTime}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-bold text-slate-900">{f.availableSeats}</span>
-                      <span className="text-slate-400 text-[10px]"> / {f.capacity}</span>
-                    </td>
-                    <td className="py-3 px-3 font-bold text-slate-800">
-                      ₹{f.adultFare.toLocaleString('en-IN')} / ₹{f.childFare.toLocaleString('en-IN')}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          f.status === 'SCHEDULED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : f.status === 'DELAYED'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}
-                      >
-                        {f.status}
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+            {/* Blank offset tiles for first week */}
+            {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+              <div
+                key={`offset-${idx}`}
+                className="min-h-[95px] sm:min-h-[115px] bg-slate-50/40 rounded-2xl border border-dashed border-slate-100"
+              />
+            ))}
+
+            {/* Actual Month Days */}
+            {Array.from({ length: totalDaysInMonth }).map((_, idx) => {
+              const dayNum = idx + 1;
+              const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+              const dayData: CalendarDayOverview | undefined = calendarOverview?.days?.[dateKey];
+
+              const isToday = dateKey === todayStr;
+              const isSelected = dateKey === selectedDateStr;
+
+              return (
+                <div
+                  key={dateKey}
+                  onClick={() => setSelectedDateStr(dateKey)}
+                  className={`min-h-[95px] sm:min-h-[115px] rounded-2xl p-1.5 sm:p-2 border transition cursor-pointer flex flex-col justify-between select-none ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/25 shadow-sm'
+                      : isToday
+                      ? 'border-amber-300 bg-amber-50/30'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
+                  }`}
+                >
+                  {/* Top Bar: Date number + Flight Count Badge */}
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-xs font-black ${
+                        isToday
+                          ? 'w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center'
+                          : isSelected
+                          ? 'text-blue-700'
+                          : 'text-slate-800'
+                      }`}
+                    >
+                      {dayNum}
+                    </span>
+
+                    {dayData && dayData.flightCount > 0 && (
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                        {dayData.flightCount} flt{dayData.flightCount > 1 ? 's' : ''}
                       </span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleSelectInstanceForEdit(f)}
-                        className="inline-flex items-center space-x-1 px-3 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-bold rounded-lg text-xs transition"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                        <span>Edit Instance</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                  </div>
+
+                  {/* Middle Indicators: Bookings & Status Flags */}
+                  <div className="space-y-1 my-1">
+                    {/* Booking badge */}
+                    {dayData && dayData.bookingCount > 0 && (
+                      <div className="flex items-center space-x-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">
+                        <Ticket className="w-2.5 h-2.5 flex-shrink-0" />
+                        <span>
+                          {dayData.bookingCount} bkgs ({dayData.passengerCount} pax)
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Status Flags: Cancellation, Delay, or Fully Booked */}
+                    <div className="flex flex-wrap gap-1">
+                      {dayData?.hasCancelledFlights && (
+                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-100 text-rose-800">
+                          Cancelled
+                        </span>
+                      )}
+                      {dayData?.hasDelayedFlights && (
+                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-100 text-amber-800">
+                          Delayed
+                        </span>
+                      )}
+                      {dayData?.isFullyBooked && (
+                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-slate-800 text-white">
+                          Full
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Flight Chips Preview */}
+                  <div className="space-y-0.5 overflow-hidden">
+                    {dayData?.flightsSample && dayData.flightsSample.length > 0 ? (
+                      dayData.flightsSample.slice(0, 2).map((f) => (
+                        <div
+                          key={f.id}
+                          className="text-[9px] font-semibold text-slate-600 truncate flex items-center justify-between"
+                        >
+                          <span className="truncate">{f.flightCode}</span>
+                          <span className="font-mono text-[8px] text-slate-400 ml-1">{f.departureTime}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-[9px] text-slate-300 italic">No flights</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Date Details Drawer / Panel */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
+        {/* Date Details Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <CalendarIcon className="w-5 h-5 text-blue-600" />
+              <h3 className="text-lg font-black text-navy-950">
+                Detailed Operations for {selectedDateStr}
+              </h3>
+              {selectedDateStr === todayStr && (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  TODAY
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Complete schedule, passenger lists, and payment reconciliations for this travel date.
+            </p>
+          </div>
+
+          {/* Tab Switcher */}
+          <div className="flex items-center space-x-1.5 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setActiveDateTab('summary')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                activeDateTab === 'summary'
+                  ? 'bg-white text-navy-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Daily Summary
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDateTab('flights')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 ${
+                activeDateTab === 'flights'
+                  ? 'bg-white text-navy-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Flight Schedule</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px]">
+                {dateDetails?.flights.length ?? 0}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDateTab('bookings')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 ${
+                activeDateTab === 'bookings'
+                  ? 'bg-white text-navy-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Bookings Info</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px]">
+                {dateDetails?.bookings.length ?? 0}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab 1: Daily Summary Cards */}
+        {activeDateTab === 'summary' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {/* Flights on Date */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Total Flights
+                </span>
+                <p className="text-xl font-black text-slate-900">
+                  {dateDetails?.dailySummary.totalFlights ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">Scheduled departures</span>
+              </div>
+
+              {/* Total Bookings */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Total Bookings
+                </span>
+                <p className="text-xl font-black text-slate-900">
+                  {dateDetails?.dailySummary.totalBookings ?? 0}
+                </p>
+                <span className="text-[10px] text-slate-500">Orders placed for date</span>
+              </div>
+
+              {/* Confirmed Bookings */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                  Confirmed
+                </span>
+                <p className="text-xl font-black text-emerald-700">
+                  {dateDetails?.dailySummary.confirmedBookings ?? 0}
+                </p>
+                <span className="text-[10px] text-emerald-600">Active reservations</span>
+              </div>
+
+              {/* Pending Bookings */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                  Pending Verification
+                </span>
+                <p className="text-xl font-black text-amber-700">
+                  {dateDetails?.dailySummary.pendingBookings ?? 0}
+                </p>
+                <span className="text-[10px] text-amber-600">Awaiting UTR approval</span>
+              </div>
+
+              {/* Cancelled Bookings */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">
+                  Cancellations
+                </span>
+                <p className="text-xl font-black text-rose-700">
+                  {dateDetails?.dailySummary.cancelledBookings ?? 0}
+                </p>
+                <span className="text-[10px] text-rose-600">Released tickets</span>
+              </div>
+
+              {/* Travelling Passengers */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-violet-700 uppercase tracking-wider">
+                  Travelling Passengers
+                </span>
+                <p className="text-xl font-black text-violet-800">
+                  {dateDetails?.dailySummary.travellingPassengers ?? 0}
+                </p>
+                <span className="text-[10px] text-violet-600">Ticketed passengers</span>
+              </div>
+
+              {/* Date Verified Revenue */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                  Verified Revenue
+                </span>
+                <p className="text-xl font-black text-emerald-700">
+                  ₹{(dateDetails?.dailySummary.verifiedRevenue ?? 0).toLocaleString('en-IN')}
+                </p>
+                <span className="text-[10px] text-emerald-600">Verified payments</span>
+              </div>
+
+              {/* Seat Occupancy */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                  Seat Occupancy
+                </span>
+                <p className="text-xl font-black text-blue-600">
+                  {dateDetails?.dailySummary.occupancyRate ?? 0}%
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  {dateDetails?.dailySummary.occupiedSeats ?? 0} / {dateDetails?.dailySummary.totalCapacity ?? 0} seats
+                </span>
+              </div>
+            </div>
+
+            {/* Quick action buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveDateTab('flights')}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
+              >
+                Inspect Flight Manifest ({dateDetails?.flights.length ?? 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveDateTab('bookings')}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition"
+              >
+                View Passenger Bookings ({dateDetails?.bookings.length ?? 0})
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Flight Schedule Table with Edit Action */}
+        {activeDateTab === 'flights' && (
+          <div className="space-y-4">
+            {dateDetails?.flights && dateDetails.flights.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3">Flight</th>
+                      <th className="py-2.5 px-3">Route</th>
+                      <th className="py-2.5 px-3">Departure / Arrival</th>
+                      <th className="py-2.5 px-3">Available / Capacity</th>
+                      <th className="py-2.5 px-3">Occupancy</th>
+                      <th className="py-2.5 px-3">Adult / Child Fare</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dateDetails.flights.map((f) => (
+                      <tr key={f.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 px-3 font-extrabold text-navy-950">
+                          {f.flightCode}
+                          <span className="block text-[10px] text-slate-400 font-normal">
+                            {f.airlineName}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-700">
+                          {f.origin} &rarr; {f.destination}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-800">
+                          {f.departureTime} - {f.arrivalTime}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-bold text-slate-900">{f.availableSeats}</span>
+                          <span className="text-slate-400 text-[10px]"> / {f.capacity}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-bold text-blue-600">{f.occupancyRate}%</span>
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-800">
+                          ₹{f.adultFare.toLocaleString('en-IN')} / ₹{f.childFare.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              f.status === 'SCHEDULED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : f.status === 'DELAYED'
+                                ? 'bg-amber-100 text-amber-800'
+                                : f.status === 'CANCELLED'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectInstanceForEdit(f)}
+                            className="inline-flex items-center space-x-1 px-3 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-bold rounded-lg text-xs transition"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>Edit Instance</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                No flights scheduled for {selectedDateStr}. Click &quot;Generate 12-Month Schedules&quot; to populate recurring flight operations.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Bookings Information Table with Search & Status Filters */}
+        {activeDateTab === 'bookings' && (
+          <div className="space-y-4">
+            {/* Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search PNR, customer, flight..."
+                  value={bookingSearch}
+                  onChange={(e) => setBookingSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
+                <label className="text-xs font-bold text-slate-500 uppercase">Status:</label>
+                <select
+                  value={bookingStatusFilter}
+                  onChange={(e) => setBookingStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:bg-white"
+                >
+                  <option value="ALL">All Statuses ({dateDetails?.bookings.length ?? 0})</option>
+                  <option value="CONFIRMED">Confirmed</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredBookings.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3">PNR / Ref</th>
+                      <th className="py-2.5 px-3">Customer</th>
+                      <th className="py-2.5 px-3">Flight / Route</th>
+                      <th className="py-2.5 px-3">Passengers</th>
+                      <th className="py-2.5 px-3">Amount</th>
+                      <th className="py-2.5 px-3">Payment</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">View Pax</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredBookings.map((b) => (
+                      <tr key={b.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 px-3 font-mono font-bold text-navy-950">
+                          {b.pnr}
+                          <span className="block text-[10px] text-slate-400 font-normal">
+                            Ref: {b.bookingReference}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-800">
+                          {b.customerName}
+                          <span className="block text-[10px] text-slate-400 font-normal">
+                            {b.customerEmail}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-700">
+                          <span className="font-bold text-slate-900">{b.flightCode}</span> &bull; {b.route}
+                          <span className="block text-[10px] font-mono text-slate-400">
+                            Dep: {b.departureTime}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-bold text-slate-900">
+                            {b.passengerCount} {b.passengerCount > 1 ? 'Passengers' : 'Passenger'}
+                          </span>
+                          <span className="block text-[10px] text-slate-400 truncate max-w-[150px]">
+                            {b.passengers.map((p) => p.name).join(', ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-900">
+                          ₹{b.totalAmount.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              b.paymentStatus === 'CONFIRMED' || b.paymentStatus === 'VERIFIED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : b.paymentStatus === 'PENDING_VERIFICATION'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {b.paymentStatus}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              b.bookingStatus === 'CONFIRMED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {b.bookingStatus}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setViewingPassengers(b)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Details</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                No passenger bookings found matching criteria for {selectedDateStr}.
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Edit Single Flight Instance Modal */}
       {selectedInstance && (
-        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-6 border border-slate-100">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center space-x-3">
@@ -473,7 +1038,7 @@ export const AdminSchedulePage: React.FC = () => {
             </div>
 
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-800">
-              <span className="font-bold">Single Instance Mode:</span> Any modifications made here apply exclusively to this departure on <span className="font-bold">{selectedInstance.travelDate}</span> without altering historical departures or recurring weekly schedule rules.
+              <span className="font-bold">Single Instance Override:</span> Any modifications made here apply exclusively to this departure on <span className="font-bold">{selectedInstance.travelDate}</span> without altering historical departures or recurring weekly schedule rules.
             </div>
 
             <form onSubmit={handleSaveSingleInstance} className="space-y-4 text-xs">
@@ -527,19 +1092,33 @@ export const AdminSchedulePage: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Flight Status</label>
-                <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold"
-                >
-                  <option value="SCHEDULED">SCHEDULED (Normal Operations)</option>
-                  <option value="DELAYED">DELAYED (Departure Postponed)</option>
-                  <option value="CANCELLED">CANCELLED (Departure Cancelled)</option>
-                  <option value="BOARDING">BOARDING (Gates Open)</option>
-                  <option value="COMPLETED">COMPLETED (Arrived at Destination)</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Flight Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold"
+                  >
+                    <option value="SCHEDULED">SCHEDULED (Normal)</option>
+                    <option value="DELAYED">DELAYED (Postponed)</option>
+                    <option value="CANCELLED">CANCELLED (Grounded)</option>
+                    <option value="BOARDING">BOARDING (Gates Open)</option>
+                    <option value="COMPLETED">COMPLETED (Arrived)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Available Seats</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    max={selectedInstance.capacity}
+                    value={editAvailableSeats}
+                    onChange={(e) => setEditAvailableSeats(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm"
+                  />
+                </div>
               </div>
 
               <div className="flex space-x-3 pt-3">
@@ -559,6 +1138,79 @@ export const AdminSchedulePage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Passenger Manifest Modal */}
+      {viewingPassengers && (
+        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-black text-navy-950">
+                  Passenger Manifest ({viewingPassengers.pnr})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {viewingPassengers.flightCode} &bull; {viewingPassengers.travelDate}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingPassengers(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+                <p className="font-semibold text-slate-500">Contact Person:</p>
+                <p className="font-bold text-slate-900">{viewingPassengers.customerName}</p>
+                <p className="text-slate-600">{viewingPassengers.customerEmail} &bull; {viewingPassengers.customerPhone}</p>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-[10px] text-slate-500">
+                    <tr>
+                      <th className="p-2.5">Passenger Name</th>
+                      <th className="p-2.5">Type</th>
+                      <th className="p-2.5">Seat</th>
+                      <th className="p-2.5 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {viewingPassengers.passengers.map((p, idx) => (
+                      <tr key={idx}>
+                        <td className="p-2.5 font-bold text-slate-900">{p.name}</td>
+                        <td className="p-2.5 text-slate-600">{p.type}</td>
+                        <td className="p-2.5 font-mono font-bold text-blue-600">
+                          {p.seatNumber}
+                        </td>
+                        <td className="p-2.5 text-right">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              p.isCancelled ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {p.isCancelled ? 'CANCELLED' : 'ACTIVE'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewingPassengers(null)}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

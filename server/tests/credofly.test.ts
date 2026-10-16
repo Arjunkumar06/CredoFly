@@ -136,14 +136,21 @@ describe('CredoFly API Test Suite', () => {
       expect(res.body.success).toBe(true);
     });
 
-    it('should fetch real database dashboard metrics', async () => {
+    it('should fetch real database dashboard metrics with timezone and date filtering', async () => {
       const res = await request(app)
-        .get('/api/admin/dashboard')
+        .get('/api/admin/dashboard?date=2026-10-16')
         .set('Authorization', adminAuthHeader);
 
       expect(res.status).toBe(200);
       expect(res.body.stats).toBeDefined();
       expect(typeof res.body.stats.totalActiveFlights).toBe('number');
+      expect(res.body.stats.timezone).toBe('Asia/Kolkata');
+      expect(typeof res.body.stats.flightsScheduledToday).toBe('number');
+      expect(typeof res.body.stats.totalRegisteredUsers).toBe('number');
+      expect(typeof res.body.stats.totalVerifiedRevenue).toBe('number');
+      expect(typeof res.body.stats.occupancyRateToday).toBe('number');
+      expect(Array.isArray(res.body.stats.flightsDepartingSoon)).toBe(true);
+      expect(Array.isArray(res.body.stats.recentBookingsOnDate)).toBe(true);
     });
   });
 
@@ -799,12 +806,50 @@ describe('CredoFly API Test Suite', () => {
       expect(res.body.holiday.name).toBe('Special Aviation Day');
       expect(Number(res.body.holiday.surgePercentage)).toBe(25);
     });
+
+    it('should fetch 12-month calendar overview with monthly metrics and day-by-day mapping', async () => {
+      const res = await request(app)
+        .get('/api/admin/calendar/overview?year=2026&month=10')
+        .set('Authorization', adminAuthHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.year).toBe(2026);
+      expect(res.body.month).toBe(10);
+      expect(res.body.monthlySummary).toBeDefined();
+      expect(typeof res.body.monthlySummary.totalScheduledFlights).toBe('number');
+      expect(typeof res.body.monthlySummary.monthlyOccupancyRate).toBe('number');
+      expect(res.body.days).toBeDefined();
+      expect(res.body.days['2026-10-16']).toBeDefined();
+    });
+
+    it('should fetch calendar date details with flight schedule and passenger bookings', async () => {
+      const res = await request(app)
+        .get('/api/admin/calendar/date-details?date=2026-10-16')
+        .set('Authorization', adminAuthHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.selectedDate).toBe('2026-10-16');
+      expect(res.body.dailySummary).toBeDefined();
+      expect(typeof res.body.dailySummary.totalFlights).toBe('number');
+      expect(Array.isArray(res.body.flights)).toBe(true);
+      expect(Array.isArray(res.body.bookings)).toBe(true);
+    });
   });
 
   describe('10. Google Pay QR Workflow & Admin Manual Payment Verification', () => {
     let gpayBookingId: string;
     let paymentId: string;
     const testUtr = `UTR${Date.now()}`;
+
+    beforeAll(async () => {
+      // Ensure flightInstanceId has sufficient available seats for payments test suite
+      await prisma.flightInstance.update({
+        where: { id: flightInstanceId },
+        data: { availableSeats: 50 },
+      });
+    });
 
     it('should fetch active Google Pay / UPI QR configuration', async () => {
       const res = await request(app).get('/api/payment/config');

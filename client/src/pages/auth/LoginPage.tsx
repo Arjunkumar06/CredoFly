@@ -48,7 +48,7 @@ export const LoginPage: React.FC = () => {
     try {
       // In web browser without active Google Client ID configured, utilize secure backend Google auth adapter
       const res = await authApi.google({
-        email: 'passenger.demo@gmail.com',
+        email: 'alex.rivera@credofly.com',
         name: 'Alex Rivera',
       });
 

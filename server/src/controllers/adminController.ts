@@ -16,10 +16,38 @@ import { Prisma } from '@prisma/client';
 export class AdminController {
   static async getDashboard(req: Request, res: Response, next: NextFunction) {
     try {
-      const stats = await AdminService.getDashboardStats();
+      const date = req.query.date as string | undefined;
+      const stats = await AdminService.getDashboardStats(date);
       return res.status(200).json({
         success: true,
         stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getCalendarOverview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+      const month = req.query.month ? Number(req.query.month) : new Date().getMonth() + 1;
+      const overview = await AdminService.getCalendarOverview(year, month);
+      return res.status(200).json({
+        success: true,
+        ...overview,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getCalendarDateDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const date = (req.query.date as string) || AdminService.getTodayInKolkata();
+      const details = await AdminService.getCalendarDateDetails(date);
+      return res.status(200).json({
+        success: true,
+        ...details,
       });
     } catch (error) {
       next(error);
