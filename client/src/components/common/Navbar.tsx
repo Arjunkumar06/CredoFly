@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Plane, User as UserIcon, LogOut, Shield } from 'lucide-react';
+import { Plane, User as UserIcon, LogOut, Shield, Tag, HelpCircle, Menu, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
+    setMobileMenuOpen(false);
     navigate('/');
   };
 
@@ -34,7 +36,7 @@ export const Navbar: React.FC = () => {
             </div>
           </Link>
 
-          {/* Nav Links */}
+          {/* Desktop Nav Links */}
           <div className="hidden md:flex items-center space-x-1">
             <Link
               to="/"
@@ -57,6 +59,28 @@ export const Navbar: React.FC = () => {
               Flights
             </Link>
             <Link
+              to="/offers"
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                isActive('/offers')
+                  ? 'text-white bg-slate-800/80'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5 text-blue-400" />
+              <span>Offers</span>
+            </Link>
+            <Link
+              to="/help"
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+                isActive('/help')
+                  ? 'text-white bg-slate-800/80'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
+              <span>Help & Support</span>
+            </Link>
+            <Link
               to="/my-bookings"
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive('/my-bookings')
@@ -68,7 +92,7 @@ export const Navbar: React.FC = () => {
             </Link>
           </div>
 
-          {/* User Controls */}
+          {/* User Controls & Mobile Toggle */}
           <div className="flex items-center space-x-3">
             {user ? (
               <div className="flex items-center space-x-3">
@@ -121,8 +145,81 @@ export const Navbar: React.FC = () => {
                 <span>Admin</span>
               </Link>
             </div>
+
+            {/* Mobile Menu Hamburger Button */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg md:hidden transition"
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Dropdown Drawer */}
+        {mobileMenuOpen && (
+          <div className="md:hidden py-4 border-t border-slate-800/80 space-y-1">
+            <Link
+              to="/"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 rounded-lg text-sm font-medium ${
+                isActive('/') ? 'text-white bg-slate-800' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              Home
+            </Link>
+            <Link
+              to="/flights"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 rounded-lg text-sm font-medium ${
+                isActive('/flights') ? 'text-white bg-slate-800' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              Search Flights
+            </Link>
+            <Link
+              to="/offers"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                isActive('/offers') ? 'text-white bg-slate-800' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Tag className="w-4 h-4 text-blue-400" />
+              <span>Offers & Deals</span>
+            </Link>
+            <Link
+              to="/help"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                isActive('/help') ? 'text-white bg-slate-800' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4 text-blue-400" />
+              <span>Help & Support</span>
+            </Link>
+            <Link
+              to="/my-bookings"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 rounded-lg text-sm font-medium ${
+                isActive('/my-bookings') ? 'text-white bg-slate-800' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              My Bookings
+            </Link>
+            <div className="pt-2 border-t border-slate-800/80">
+              <Link
+                to="/admin/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center space-x-2 px-3 py-2 text-xs text-blue-400 font-semibold hover:bg-slate-800/60 rounded-lg"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Admin Operations Portal</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

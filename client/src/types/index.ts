@@ -384,12 +384,18 @@ export interface CancellationQuote {
   bookingReference: string;
   travelDate: string;
   hoursUntilDeparture: number;
+  hoursBeforeDeparture?: number;
   tier: string;
+  tierCode?: string;
   refundPercentage: number;
   totalPaid: number;
   refundAmount: number;
+  estimatedRefund?: number;
   cancellationFee: number;
-  notes: string;
+  notes?: string;
+  policyNote?: string;
+  route?: string;
+  departureTime?: string;
 }
 
 export interface LowFareDay {

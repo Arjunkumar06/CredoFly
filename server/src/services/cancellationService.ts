@@ -94,11 +94,13 @@ export class CancellationService {
       route: `${booking.flightInstance.flight.origin} → ${booking.flightInstance.flight.destination}`,
       departureTime: `${booking.flightInstance.travelDate.toISOString().slice(0, 10)} ${booking.flightInstance.departureTime}`,
       hoursBeforeDeparture,
+      hoursUntilDeparture: hoursBeforeDeparture,
       totalPaid,
       tier: tier.tierLabel,
       tierCode: tier.tierName,
       refundPercentage: tier.refundPercentage,
       estimatedRefund: refundAmount,
+      refundAmount,
       cancellationFee,
       policyNote: tier.description,
       passengerCount: booking.passengers.filter((p) => !p.isCancelled).length,
@@ -209,11 +211,19 @@ export class CancellationService {
           },
         },
         include: {
+          user: {
+            select: { id: true, name: true, username: true, email: true, customerId: true, mobileNumber: true },
+          },
           flightInstance: {
             include: { flight: true },
           },
           passengers: true,
+          seats: true,
+          payments: true,
           cancellations: true,
+          auditEvents: {
+            orderBy: { createdAt: 'desc' },
+          },
         },
       });
 

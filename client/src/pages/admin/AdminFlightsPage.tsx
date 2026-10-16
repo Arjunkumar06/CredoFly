@@ -135,9 +135,42 @@ export const AdminFlightsPage: React.FC = () => {
     setError(null);
     setSuccessMsg(null);
 
+    const cleanCode = flightCode.trim().toUpperCase();
+    if (!cleanCode || cleanCode.length < 2) {
+      setError('Please provide a valid flight code with at least 2 characters (e.g. CF101).');
+      return;
+    }
+
+    if (!origin.trim() || !destination.trim()) {
+      setError('Both origin and destination airports are required.');
+      return;
+    }
+
     if (origin.trim().toLowerCase() === destination.trim().toLowerCase()) {
       setError('Origin and destination must be different airports.');
       return;
+    }
+
+    if (capacity <= 0) {
+      setError('Seating capacity must be a positive integer.');
+      return;
+    }
+
+    const operatingDays = schedules.filter((s) => s.isOperating);
+    if (operatingDays.length === 0) {
+      setError('At least one day of the week must be marked as operating.');
+      return;
+    }
+
+    for (const op of operatingDays) {
+      if (!op.departureTime || !op.arrivalTime) {
+        setError(`Please provide valid departure and arrival times for ${op.dayName}.`);
+        return;
+      }
+      if (op.adultFare <= 0 || op.childFare <= 0) {
+        setError(`Fares must be greater than zero for ${op.dayName}.`);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -145,8 +178,8 @@ export const AdminFlightsPage: React.FC = () => {
       if (selectedFlightId) {
         // Update flight
         const res = await adminApi.updateFlight(selectedFlightId, {
-          origin,
-          destination,
+          origin: origin.trim(),
+          destination: destination.trim(),
           capacity,
           isActive,
           schedules: schedules.map((s) => ({
@@ -159,16 +192,21 @@ export const AdminFlightsPage: React.FC = () => {
           })),
         });
         if (res.data.success) {
-          setSuccessMsg(`Flight ${flightCode} updated successfully.`);
+          try {
+            await adminApi.generateSchedules(365);
+          } catch (genErr) {
+            console.warn('Auto-schedule generation warning:', genErr);
+          }
+          setSuccessMsg(`Flight ${cleanCode} updated successfully.`);
           setIsEditing(false);
           loadFlights();
         }
       } else {
         // Create new flight
         const res = await adminApi.createFlight({
-          flightCode,
-          origin,
-          destination,
+          flightCode: cleanCode,
+          origin: origin.trim(),
+          destination: destination.trim(),
           capacity,
           isActive,
           schedules: schedules.map((s) => ({
@@ -181,7 +219,13 @@ export const AdminFlightsPage: React.FC = () => {
           })),
         });
         if (res.data.success) {
-          setSuccessMsg(`Flight ${flightCode} created successfully with 7-day schedule.`);
+          // Immediately regenerate schedules for the new flight so it's live in 12-month calendar
+          try {
+            await adminApi.generateSchedules(365);
+          } catch (genErr) {
+            console.warn('Auto-schedule generation warning:', genErr);
+          }
+          setSuccessMsg(`Flight ${cleanCode} created successfully and populated into 12-month calendar.`);
           setIsEditing(false);
           loadFlights();
         }
@@ -238,21 +282,22 @@ export const AdminFlightsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Editor Modal / Form */}
+      {/* Flight Editor Overlay Modal */}
       {isEditing && (
-        <div className="bg-white rounded-2xl border border-blue-200 shadow-lg p-6 sm:p-8 space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-            <h2 className="text-lg font-bold text-navy-950 flex items-center space-x-2">
-              <Plane className="w-5 h-5 text-blue-600" />
-              <span>{selectedFlightId ? `Edit Flight: ${flightCode}` : 'Configure New Flight'}</span>
-            </h2>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full p-6 sm:p-8 space-y-6 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-navy-950 flex items-center space-x-2">
+                <Plane className="w-5 h-5 text-blue-600" />
+                <span>{selectedFlightId ? `Edit Flight: ${flightCode}` : 'Configure New Commercial Flight'}</span>
+              </h2>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
           <form onSubmit={handleSaveFlight} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -411,6 +456,7 @@ export const AdminFlightsPage: React.FC = () => {
             </div>
           </form>
         </div>
+      </div>
       )}
 
       {/* Flights Table */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Plane,
   Calendar,
@@ -21,9 +21,11 @@ import {
 import { bookingApi, paymentApi } from '../../services/api';
 import { Booking, CancellationQuote } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 
 export const BookingDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -57,6 +59,13 @@ export const BookingDetailsPage: React.FC = () => {
       loadBooking();
     }
   }, [id]);
+
+  // If customer came with ?action=cancel, open the cancellation modal automatically
+  useEffect(() => {
+    if (booking && searchParams.get('action') === 'cancel' && booking.status === 'CONFIRMED' && !showFullCancelModal) {
+      handleOpenCancelModal();
+    }
+  }, [booking, searchParams]);
 
   const loadBooking = async () => {
     setIsLoading(true);
@@ -99,7 +108,8 @@ export const BookingDetailsPage: React.FC = () => {
     try {
       const res = await bookingApi.cancel(booking.id);
       if (res.data.success) {
-        setBooking(res.data.booking);
+        // Reload complete booking from DB to ensure all relations are populated
+        await loadBooking();
         setSuccessMsg(
           `Booking cancelled successfully. Refund of ₹${Number(
             res.data.refundAmount || 0
@@ -133,11 +143,11 @@ export const BookingDetailsPage: React.FC = () => {
       });
 
       if (res.data.success) {
-        setBooking(res.data.booking);
+        await loadBooking();
         setSuccessMsg(
-          `Successfully cancelled ${cancelAdults} adult(s) and ${cancelChildren} child(ren). Refund of ₹${res.data.refundAmount?.toLocaleString(
-            'en-IN'
-          )} processed.`
+          `Successfully cancelled ${cancelAdults} adult(s) and ${cancelChildren} child(ren). Refund of ₹${Number(
+            res.data.refundAmount || 0
+          ).toLocaleString('en-IN')} processed.`
         );
         setCancelAdults(0);
         setCancelChildren(0);
@@ -226,8 +236,12 @@ export const BookingDetailsPage: React.FC = () => {
   });
 
   return (
-    <div className="bg-slate-50 min-h-screen py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <ErrorBoundary
+      fallbackTitle="Booking Itinerary Rendering Issue"
+      fallbackMessage="We encountered an issue rendering this booking itinerary. All tickets and database records remain intact."
+    >
+      <div className="bg-slate-50 min-h-screen py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Back Link */}
         <button
           onClick={() => navigate('/my-bookings')}
@@ -611,10 +625,10 @@ export const BookingDetailsPage: React.FC = () => {
                   <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between">
                     <div>
                       <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Applicable Policy Tier</p>
-                      <p className="font-extrabold text-navy-950 text-sm mt-0.5">{cancellationQuote.tier}</p>
+                      <p className="font-extrabold text-navy-950 text-sm mt-0.5">{cancellationQuote.tier || 'Standard Policy Tier'}</p>
                     </div>
                     <span className="px-3 py-1 bg-blue-600 text-white rounded-full font-black text-xs">
-                      {cancellationQuote.refundPercentage}% Refund
+                      {cancellationQuote.refundPercentage ?? 0}% Refund
                     </span>
                   </div>
 
@@ -622,19 +636,27 @@ export const BookingDetailsPage: React.FC = () => {
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
                     <div className="flex justify-between py-1 border-b border-slate-200/60">
                       <span className="text-slate-500">Hours Until Departure:</span>
-                      <span className="font-bold text-slate-800">{cancellationQuote.hoursUntilDeparture} hours</span>
+                      <span className="font-bold text-slate-800">
+                        {cancellationQuote.hoursUntilDeparture ?? cancellationQuote.hoursBeforeDeparture ?? 0} hours
+                      </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-200/60">
                       <span className="text-slate-500">Total Paid Amount:</span>
-                      <span className="font-bold text-slate-800">₹{cancellationQuote.totalPaid.toLocaleString('en-IN')}</span>
+                      <span className="font-bold text-slate-800">
+                        ₹{Number(cancellationQuote.totalPaid ?? 0).toLocaleString('en-IN')}
+                      </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-200/60 text-rose-600">
                       <span>Deducted Cancellation Fee:</span>
-                      <span className="font-bold">-₹{cancellationQuote.cancellationFee.toLocaleString('en-IN')}</span>
+                      <span className="font-bold">
+                        -₹{Number(cancellationQuote.cancellationFee ?? 0).toLocaleString('en-IN')}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-1 text-sm font-black text-emerald-600">
                       <span>Net Refund Amount:</span>
-                      <span>₹{cancellationQuote.refundAmount.toLocaleString('en-IN')}</span>
+                      <span>
+                        ₹{Number(cancellationQuote.refundAmount ?? cancellationQuote.estimatedRefund ?? 0).toLocaleString('en-IN')}
+                      </span>
                     </div>
                   </div>
 
@@ -666,5 +688,6 @@ export const BookingDetailsPage: React.FC = () => {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 };

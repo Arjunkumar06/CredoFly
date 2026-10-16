@@ -598,7 +598,7 @@ export const AdminDashboardPage: React.FC = () => {
             </p>
           </div>
           <Link
-            to="/admin/schedules"
+            to="/admin/schedule"
             className="inline-flex items-center space-x-2 text-xs font-bold text-blue-600 hover:text-blue-700 transition"
           >
             <span>Open Schedule Calendar</span>

@@ -9,6 +9,7 @@ coverage
 # Production builds
 dist
 build
+*.tsbuildinfo
 
 # Environment variables & secrets
 .env
