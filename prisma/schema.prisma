@@ -295,15 +295,16 @@ model PricingRule {
 }
 
 model NotificationLog {
-  id        String   @id @default(uuid())
-  channel   String   // "EMAIL", "SMS"
-  recipient String   // email or mobile
-  event     String   // "REGISTRATION", "BOOKING_CONFIRMATION", "PAYMENT_VERIFIED", "CANCELLATION", "REFUND_UPDATE"
-  title     String?
-  message   String
-  status    String   @default("SENT") // "SENT", "PENDING", "FAILED"
-  error     String?
-  createdAt DateTime @default(now())
+  id                String   @id @default(uuid())
+  channel           String   // "EMAIL", "SMS"
+  recipient         String   // email or mobile
+  event             String   // "REGISTRATION", "BOOKING_CONFIRMATION", "PAYMENT_VERIFIED", "CANCELLATION", "REFUND_UPDATE"
+  title             String?
+  message           String
+  status            String   @default("queued") // "queued", "accepted", "delivered", "bounced", "failed"
+  providerMessageId String?
+  error             String?
+  createdAt         DateTime @default(now())
 
   @@map("notification_logs")
 }

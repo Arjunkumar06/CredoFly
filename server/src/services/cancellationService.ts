@@ -109,7 +109,7 @@ export class CancellationService {
    * Process cancellation transaction with inventory release and refund recording
    */
   static async cancelBookingWithTierRefund(bookingId: string, userId: string, isAdmin = false) {
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
         include: {
@@ -117,6 +117,9 @@ export class CancellationService {
             include: { flight: true },
           },
           passengers: true,
+          user: {
+            select: { id: true, email: true, name: true, username: true },
+          },
         },
       });
 
@@ -214,28 +217,6 @@ export class CancellationService {
         },
       });
 
-      // 6. Notify customer asynchronously
-      NotificationService.notifyCancellation({
-        email: booking.contactEmail,
-        phone: booking.contactPhone,
-        bookingReference: booking.bookingReference,
-        pnr: booking.pnr,
-        customerName: booking.passengers?.[0]?.name,
-        flightCode: booking.flightInstance?.flight?.flightCode,
-        origin: booking.flightInstance?.flight?.origin,
-        destination: booking.flightInstance?.flight?.destination,
-        travelDate: booking.flightInstance?.travelDate ? booking.flightInstance.travelDate.toISOString().slice(0, 10) : 'Upcoming',
-        totalPaid: totalPaid.toLocaleString('en-IN'),
-        refundAmount: refundAmount.toLocaleString('en-IN'),
-        cancellationFee: cancellationFee.toLocaleString('en-IN'),
-        isPartial: false,
-        cancelledPassengers: booking.passengers?.map((p) => ({
-          name: p.name,
-          seatNumber: p.seatNumber,
-        })),
-        tierLabel: tier.tierLabel,
-      }).catch((e) => console.warn('Cancellation notification error:', e));
-
       return {
         booking: updatedBooking,
         cancellation,
@@ -243,7 +224,44 @@ export class CancellationService {
         cancellationFee,
         refundPercentage: tier.refundPercentage,
         seatsReleased: seatsToRelease,
+        recipientEmail: booking.user?.email || booking.contactEmail,
+        recipientPhone: booking.contactPhone,
+        totalPaid,
+        tierLabel: tier.tierLabel,
       };
     });
+
+    // 6. Notify customer asynchronously AFTER database transaction has committed
+    NotificationService.notifyCancellation({
+      email: result.recipientEmail,
+      phone: result.recipientPhone,
+      bookingReference: result.booking.bookingReference,
+      pnr: result.booking.pnr,
+      customerName: result.booking.passengers?.[0]?.name,
+      flightCode: result.booking.flightInstance?.flight?.flightCode,
+      origin: result.booking.flightInstance?.flight?.origin,
+      destination: result.booking.flightInstance?.flight?.destination,
+      travelDate: result.booking.flightInstance?.travelDate
+        ? result.booking.flightInstance.travelDate.toISOString().slice(0, 10)
+        : 'Upcoming',
+      totalPaid: result.totalPaid.toLocaleString('en-IN'),
+      refundAmount: result.refundAmount.toLocaleString('en-IN'),
+      cancellationFee: result.cancellationFee.toLocaleString('en-IN'),
+      isPartial: false,
+      cancelledPassengers: result.booking.passengers?.map((p) => ({
+        name: p.name,
+        seatNumber: p.seatNumber,
+      })),
+      tierLabel: result.tierLabel,
+    }).catch((e) => console.warn('Cancellation notification error:', e));
+
+    return {
+      booking: result.booking,
+      cancellation: result.cancellation,
+      refundAmount: result.refundAmount,
+      cancellationFee: result.cancellationFee,
+      refundPercentage: result.refundPercentage,
+      seatsReleased: result.seatsReleased,
+    };
   }
 }

@@ -4,6 +4,7 @@ import { AdminService } from '../services/adminService.js';
 import { FlightService } from '../services/flightService.js';
 import { BookingService } from '../services/bookingService.js';
 import { PaymentService } from '../services/paymentService.js';
+import { EmailService } from '../services/emailService.js';
 import {
   createFlightSchema,
   updateFlightSchema,
@@ -610,5 +611,19 @@ export class AdminController {
         username: process.env.ADMIN_USERNAME || 'admin',
       },
     });
+  }
+
+  // Email Diagnostic Test
+  static async runEmailDiagnostic(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recipient = req.body?.recipient || (req.query?.recipient as string | undefined);
+      const result = await EmailService.runDiagnosticTest(recipient);
+      return res.status(200).json({
+        success: result.success,
+        diagnostic: result,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 }

@@ -52,4 +52,8 @@ router.delete('/pricing/rules/:id', AdminController.deletePricingRule);
 router.get('/aircraft-configs', AdminController.getAircraftConfigs);
 router.get('/audit-logs', AdminController.getAuditLogs);
 
+// Resend Email Diagnostic & Delivery Test
+router.post('/email/diagnostic-test', AdminController.runEmailDiagnostic);
+router.get('/email/diagnostic-test', AdminController.runEmailDiagnostic);
+
 export default router;

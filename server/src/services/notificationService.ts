@@ -110,31 +110,48 @@ export class NotificationService {
       returnFlight,
     } = params;
 
-    if (email) {
-      await EmailService.sendBookingConfirmationEmail({
-        bookingReference,
-        pnr,
-        customerName,
-        contactEmail: email,
-        contactPhone: phone,
-        cabinClass,
-        paymentMethod,
-        totalAmount,
-        outboundFlight: {
-          flightCode,
-          airlineName: airlineName || 'CredoFly Express',
-          origin,
-          destination,
-          travelDate,
-          departureTime,
-          arrivalTime,
-          cabinClass,
+    const normalizedEmail = EmailService.normalizeEmail(email);
+
+    if (normalizedEmail) {
+      // Prevent duplicate emails caused by repeated requests or frontend retries
+      const existingEmail = await prisma.notificationLog.findFirst({
+        where: {
+          channel: 'EMAIL',
+          event: 'BOOKING_CONFIRMATION',
+          recipient: normalizedEmail,
+          title: { contains: bookingReference },
+          status: { in: ['accepted', 'delivered', 'SENT'] },
         },
-        returnFlight,
-        passengers: passengers.length > 0 ? passengers : [
-          { name: customerName || 'Primary Traveler', type: 'ADULT', seatNumber: null }
-        ],
       });
+
+      if (existingEmail) {
+        console.log(`ℹ️ [NotificationService] Skipping duplicate confirmation email for ${bookingReference} to ${normalizedEmail}`);
+      } else {
+        await EmailService.sendBookingConfirmationEmail({
+          bookingReference,
+          pnr,
+          customerName,
+          contactEmail: normalizedEmail,
+          contactPhone: phone,
+          cabinClass,
+          paymentMethod,
+          totalAmount,
+          outboundFlight: {
+            flightCode,
+            airlineName: airlineName || 'CredoFly Express',
+            origin,
+            destination,
+            travelDate,
+            departureTime,
+            arrivalTime,
+            cabinClass,
+          },
+          returnFlight,
+          passengers: passengers.length > 0 ? passengers : [
+            { name: customerName || 'Primary Traveler', type: 'ADULT', seatNumber: null }
+          ],
+        });
+      }
     }
 
     if (phone) {
@@ -185,23 +202,40 @@ export class NotificationService {
       tierLabel,
     } = params;
 
-    if (email) {
-      await EmailService.sendCancellationEmail({
-        bookingReference,
-        pnr,
-        customerName,
-        contactEmail: email,
-        flightCode,
-        origin,
-        destination,
-        travelDate,
-        refundAmount,
-        cancellationFee,
-        totalPaid: totalPaid ?? refundAmount,
-        isPartial,
-        cancelledPassengers,
-        tierLabel,
+    const normalizedEmail = EmailService.normalizeEmail(email);
+
+    if (normalizedEmail) {
+      // Prevent duplicate cancellation emails caused by repeated requests or frontend retries
+      const existingEmail = await prisma.notificationLog.findFirst({
+        where: {
+          channel: 'EMAIL',
+          event: 'CANCELLATION',
+          recipient: normalizedEmail,
+          title: { contains: bookingReference },
+          status: { in: ['accepted', 'delivered', 'SENT'] },
+        },
       });
+
+      if (existingEmail) {
+        console.log(`ℹ️ [NotificationService] Skipping duplicate cancellation email for ${bookingReference} to ${normalizedEmail}`);
+      } else {
+        await EmailService.sendCancellationEmail({
+          bookingReference,
+          pnr,
+          customerName,
+          contactEmail: normalizedEmail,
+          flightCode,
+          origin,
+          destination,
+          travelDate,
+          refundAmount,
+          cancellationFee,
+          totalPaid: totalPaid ?? refundAmount,
+          isPartial,
+          cancelledPassengers,
+          tierLabel,
+        });
+      }
     }
 
     if (phone) {

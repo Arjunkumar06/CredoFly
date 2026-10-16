@@ -249,6 +249,7 @@ export class BookingService {
           },
         },
         include: {
+          user: { select: { id: true, email: true, name: true, username: true } },
           flightInstance: {
             include: { flight: true },
           },
@@ -436,12 +437,13 @@ export class BookingService {
           };
         }
 
+        const targetEmail = result.user?.email || result.contactEmail;
         await NotificationService.notifyBookingConfirmation({
-          email: result.contactEmail,
+          email: targetEmail,
           phone: result.contactPhone,
           bookingReference: result.bookingReference,
           pnr: result.pnr,
-          customerName: result.passengers[0]?.name,
+          customerName: result.passengers[0]?.name || result.user?.name || undefined,
           flightCode: result.flightInstance.flight.flightCode,
           airlineName: result.flightInstance.flight.airlineName,
           origin: result.flightInstance.flight.origin,
@@ -736,8 +738,8 @@ export class BookingService {
         select: { email: true, mobileNumber: true },
       });
 
-      const recipientEmail = booking.contactEmail || user?.email;
-      const recipientPhone = booking.contactPhone || user?.mobileNumber;
+      const recipientEmail = user?.email || booking.contactEmail;
+      const recipientPhone = user?.mobileNumber || booking.contactPhone;
 
       return { updatedBooking, recipientEmail, recipientPhone, totalAmount: booking.totalAmount.toNumber() };
     });
@@ -902,8 +904,8 @@ export class BookingService {
         booking: updated,
         refundAmount,
         seatsReleased: seatsToRelease,
-        recipientEmail: booking.contactEmail || user?.email,
-        recipientPhone: booking.contactPhone || user?.mobileNumber,
+        recipientEmail: user?.email || booking.contactEmail,
+        recipientPhone: user?.mobileNumber || booking.contactPhone,
       };
     });
 

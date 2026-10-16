@@ -64,6 +64,7 @@ export class PaymentService {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
+        user: { select: { id: true, email: true, name: true, username: true } },
         flightInstance: {
           include: { flight: true },
         },
@@ -133,13 +134,14 @@ export class PaymentService {
     });
 
     if (isAutoVerify) {
-      // Trigger confirmation notification
+      // Trigger confirmation notification to authoritative user email
+      const targetEmail = booking.user?.email || booking.contactEmail;
       NotificationService.notifyBookingConfirmation({
-        email: booking.contactEmail,
+        email: targetEmail,
         phone: booking.contactPhone,
         bookingReference: booking.bookingReference,
         pnr: booking.pnr,
-        customerName: booking.passengers[0]?.name,
+        customerName: booking.passengers[0]?.name || booking.user?.name || undefined,
         flightCode: booking.flightInstance.flight.flightCode,
         airlineName: booking.flightInstance.flight.airlineName,
         origin: booking.flightInstance.flight.origin,
@@ -178,6 +180,7 @@ export class PaymentService {
       include: {
         booking: {
           include: {
+            user: { select: { id: true, email: true, name: true, username: true } },
             flightInstance: {
               include: { flight: true },
             },
@@ -195,8 +198,8 @@ export class PaymentService {
       throw new BadRequestError('This payment has already been verified');
     }
 
-    return prisma.$transaction(async (tx) => {
-      const updatedPayment = await tx.payment.update({
+    const updatedPayment = await prisma.$transaction(async (tx) => {
+      const updated = await tx.payment.update({
         where: { id: paymentId },
         data: {
           status,
@@ -232,33 +235,37 @@ export class PaymentService {
         },
       });
 
-      if (status === 'VERIFIED') {
-        NotificationService.notifyBookingConfirmation({
-          email: payment.booking.contactEmail,
-          phone: payment.booking.contactPhone,
-          bookingReference: payment.booking.bookingReference,
-          pnr: payment.booking.pnr,
-          customerName: payment.booking.passengers[0]?.name,
-          flightCode: payment.booking.flightInstance.flight.flightCode,
-          airlineName: payment.booking.flightInstance.flight.airlineName,
-          origin: payment.booking.flightInstance.flight.origin,
-          destination: payment.booking.flightInstance.flight.destination,
-          travelDate: payment.booking.flightInstance.travelDate.toISOString().slice(0, 10),
-          departureTime: payment.booking.flightInstance.departureTime,
-          arrivalTime: payment.booking.flightInstance.arrivalTime,
-          cabinClass: payment.booking.cabinClass,
-          totalAmount: payment.booking.totalAmount.toNumber().toLocaleString('en-IN'),
-          paymentMethod: 'UPI / Google Pay (Verified)',
-          passengers: payment.booking.passengers.map((p) => ({
-            name: p.name,
-            type: p.type as 'ADULT' | 'CHILD',
-            seatNumber: p.seatNumber,
-          })),
-        }).catch((e) => console.warn('Payment verified notification error:', e));
-      }
-
-      return updatedPayment;
+      return updated;
     });
+
+    // Fire confirmation notification strictly post-commit
+    if (status === 'VERIFIED') {
+      const targetEmail = payment.booking.user?.email || payment.booking.contactEmail;
+      NotificationService.notifyBookingConfirmation({
+        email: targetEmail,
+        phone: payment.booking.contactPhone,
+        bookingReference: payment.booking.bookingReference,
+        pnr: payment.booking.pnr,
+        customerName: payment.booking.passengers[0]?.name || payment.booking.user?.name || undefined,
+        flightCode: payment.booking.flightInstance.flight.flightCode,
+        airlineName: payment.booking.flightInstance.flight.airlineName,
+        origin: payment.booking.flightInstance.flight.origin,
+        destination: payment.booking.flightInstance.flight.destination,
+        travelDate: payment.booking.flightInstance.travelDate.toISOString().slice(0, 10),
+        departureTime: payment.booking.flightInstance.departureTime,
+        arrivalTime: payment.booking.flightInstance.arrivalTime,
+        cabinClass: payment.booking.cabinClass,
+        totalAmount: payment.booking.totalAmount.toNumber().toLocaleString('en-IN'),
+        paymentMethod: 'UPI / Google Pay (Verified)',
+        passengers: payment.booking.passengers.map((p) => ({
+          name: p.name,
+          type: p.type as 'ADULT' | 'CHILD',
+          seatNumber: p.seatNumber,
+        })),
+      }).catch((e) => console.warn('Payment verified notification error:', e));
+    }
+
+    return updatedPayment;
   }
 
   /**

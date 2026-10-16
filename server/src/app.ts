@@ -7,6 +7,7 @@ import flightRoutes from './routes/flightRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import { WebhookController } from './controllers/webhookController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
@@ -60,6 +61,9 @@ app.use('/api/flights', flightRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Resend Webhooks
+app.post('/api/webhooks/resend', WebhookController.handleResendWebhook);
 
 // Centralized error handling
 app.use(errorHandler);

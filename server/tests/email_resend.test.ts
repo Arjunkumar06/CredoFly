@@ -8,6 +8,8 @@ import request from 'supertest';
 import app from '../src/app.js';
 
 describe('CredoFly — Resend Email Integration & Notification System', () => {
+  const adminAuthHeader = 'Basic ' + Buffer.from('admin:adminpassword123').toString('base64');
+
   beforeAll(async () => {
     try {
       await prisma.$connect();
@@ -156,7 +158,7 @@ describe('CredoFly — Resend Email Integration & Notification System', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify PostgreSQL notification log was persisted
+      // Verify PostgreSQL notification log was persisted with initial 'accepted' status and providerMessageId
       const log = await prisma.notificationLog.findFirst({
         where: {
           recipient: testEmail,
@@ -167,7 +169,8 @@ describe('CredoFly — Resend Email Integration & Notification System', () => {
 
       expect(log).toBeDefined();
       expect(log?.channel).toBe('EMAIL');
-      expect(log?.status).toBe('SENT');
+      expect(['accepted', 'SENT']).toContain(log?.status);
+      expect(log?.providerMessageId).toBeDefined();
       expect(log?.title).toContain('Welcome to CredoFly');
 
       // Restore key
@@ -177,18 +180,32 @@ describe('CredoFly — Resend Email Integration & Notification System', () => {
       EmailService.resetClient();
     });
 
-    it('should catch errors gracefully without throwing uncaught exceptions', async () => {
-      // Test sending to invalid structure or triggering catch block
+    it('should validate email format and reject invalid emails safely without crashing', async () => {
       const result = await EmailService.sendEmail({
-        to: 'invalid-email-test@example.com',
-        subject: 'Fault Tolerance Test',
+        to: 'not-an-email-address',
+        subject: 'Validation Test',
         html: '<p>Test</p>',
         text: 'Test',
         event: 'GENERAL',
       });
 
-      // The service guarantees non-blocking execution (does not throw)
-      expect(result).toHaveProperty('success');
+      expect(result.success).toBe(false);
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('Invalid recipient email format');
+    });
+
+    it('should reject missing email recipient safely without crashing', async () => {
+      const result = await EmailService.sendEmail({
+        to: '',
+        subject: 'Empty Recipient Test',
+        html: '<p>Test</p>',
+        text: 'Test',
+        event: 'GENERAL',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('Recipient email address is required');
     });
   });
 
@@ -274,9 +291,117 @@ describe('CredoFly — Resend Email Integration & Notification System', () => {
     });
   });
 
-  describe('4. Post-Commit Transaction Safety in Booking and Cancellation', () => {
-    it('should complete booking confirmation email dispatch and verify PostgreSQL audit record', async () => {
+  describe('4. Authoritative Recipient Selection for Different Registered Customers', () => {
+    it('should dispatch booking notifications strictly to each user’s registered account email', async () => {
+      // Create Customer A
+      const userAEmail = `customer_a_${Date.now()}@domain-a.com`;
+      const userARes = await request(app).post('/api/auth/register').send({
+        username: `custA_${Date.now()}`,
+        email: userAEmail,
+        password: 'Password123!',
+        confirmPassword: 'Password123!',
+        name: 'Customer A',
+      });
+      expect(userARes.status).toBe(201);
+      const tokenA = userARes.body.token;
+
+      // Create Customer B
+      const userBEmail = `customer_b_${Date.now()}@domain-b.com`;
+      const userBRes = await request(app).post('/api/auth/register').send({
+        username: `custB_${Date.now()}`,
+        email: userBEmail,
+        password: 'Password123!',
+        confirmPassword: 'Password123!',
+        name: 'Customer B',
+      });
+      expect(userBRes.status).toBe(201);
+      const tokenB = userBRes.body.token;
+
       // Find an available flight instance
+      const instance = await prisma.flightInstance.findFirst({
+        where: { availableSeats: { gte: 4 } },
+      });
+
+      if (!instance) {
+        console.warn('Skipping test: no available flight instance');
+        return;
+      }
+
+      // Customer A creates a booking (with DEMO_PAY to auto-confirm)
+      const bookingARes = await request(app)
+        .post('/api/bookings')
+        .set('Cookie', [`token=${tokenA}`])
+        .send({
+          flightInstanceId: instance.id,
+          adultCount: 1,
+          childCount: 0,
+          cabinClass: 'ECONOMY',
+          passengers: [{ name: 'Traveler A', type: 'ADULT' }],
+          paymentMethod: 'DEMO_PAY',
+        });
+
+      expect(bookingARes.status).toBe(201);
+      const bookingA = bookingARes.body.booking;
+
+      // Customer B creates a booking
+      const bookingBRes = await request(app)
+        .post('/api/bookings')
+        .set('Cookie', [`token=${tokenB}`])
+        .send({
+          flightInstanceId: instance.id,
+          adultCount: 1,
+          childCount: 0,
+          cabinClass: 'ECONOMY',
+          passengers: [{ name: 'Traveler B', type: 'ADULT' }],
+          paymentMethod: 'DEMO_PAY',
+        });
+
+      expect(bookingBRes.status).toBe(201);
+      const bookingB = bookingBRes.body.booking;
+
+      // Verify Customer A's notification was logged to userAEmail and NOT userBEmail
+      const logA = await prisma.notificationLog.findFirst({
+        where: {
+          recipient: userAEmail,
+          event: 'BOOKING_CONFIRMATION',
+        },
+      });
+      expect(logA).toBeDefined();
+      expect(logA?.recipient).toBe(userAEmail);
+      expect(logA?.title).toContain(bookingA.pnr);
+
+      // Verify Customer B's notification was logged to userBEmail and NOT userAEmail
+      const logB = await prisma.notificationLog.findFirst({
+        where: {
+          recipient: userBEmail,
+          event: 'BOOKING_CONFIRMATION',
+        },
+      });
+      expect(logB).toBeDefined();
+      expect(logB?.recipient).toBe(userBEmail);
+      expect(logB?.title).toContain(bookingB.pnr);
+
+      // When Customer A cancels, the cancellation email goes strictly to Customer A's email
+      const cancelRes = await request(app)
+        .post(`/api/bookings/${bookingA.id}/cancel`)
+        .set('Cookie', [`token=${tokenA}`])
+        .send({ reason: 'Trip reschedule' });
+
+      expect(cancelRes.status).toBe(200);
+
+      const cancelLogA = await prisma.notificationLog.findFirst({
+        where: {
+          recipient: userAEmail,
+          event: 'CANCELLATION',
+        },
+      });
+      expect(cancelLogA).toBeDefined();
+      expect(cancelLogA?.recipient).toBe(userAEmail);
+    });
+  });
+
+  describe('5. Post-Commit Transaction Safety in Booking and Cancellation', () => {
+    it('should complete booking confirmation email dispatch and verify PostgreSQL audit record', async () => {
       const instance = await prisma.flightInstance.findFirst({
         where: { availableSeats: { gte: 2 } },
         include: { flight: true },
@@ -353,5 +478,128 @@ describe('CredoFly — Resend Email Integration & Notification System', () => {
       expect(log?.message).toContain('5C');
     });
   });
-});
 
+  describe('6. Admin Diagnostic Test Endpoint & Sandbox Guidance', () => {
+    it('should reject unauthenticated access to diagnostic test endpoint with 401', async () => {
+      const res = await request(app).post('/api/admin/email/diagnostic-test').send({});
+      expect(res.status).toBe(401);
+    });
+
+    it('should provide complete Resend diagnostic report for authenticated administrator', async () => {
+      const res = await request(app)
+        .post('/api/admin/email/diagnostic-test')
+        .set('Authorization', adminAuthHeader)
+        .send({ recipient: 'admin_test@example.com' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('diagnostic');
+      const diag = res.body.diagnostic;
+
+      expect(diag).toHaveProperty('configured');
+      expect(diag).toHaveProperty('maskedApiKey');
+      expect(diag).toHaveProperty('fromEmail');
+      expect(diag).toHaveProperty('recipient');
+      expect(diag).toHaveProperty('isSandboxSender');
+      expect(diag).toHaveProperty('warnings');
+
+      // Never leak unmasked API key
+      const bodyStr = JSON.stringify(res.body);
+      expect(bodyStr).not.toContain(process.env.RESEND_API_KEY || 'NEVER_MATCH');
+      if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.length > 8) {
+        expect(bodyStr).not.toContain(process.env.RESEND_API_KEY.slice(4));
+      }
+    });
+
+    it('should run diagnostic test using EmailService.runDiagnosticTest directly', async () => {
+      const diag = await EmailService.runDiagnosticTest('direct_test@example.com');
+      expect(diag).toBeDefined();
+      expect(diag.recipient).toBe('direct_test@example.com');
+      expect(diag.warnings.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('7. Resend Webhook Delivery Status Lifecycle', () => {
+    it('should update NotificationLog status from accepted to delivered upon webhook receipt', async () => {
+      const providerMsgId = `resend_msg_${Date.now()}_deliv`;
+      const testEmail = `webhook_deliv_${Date.now()}@example.com`;
+
+      // 1. Create a notification log record in 'accepted' status
+      await prisma.notificationLog.create({
+        data: {
+          channel: 'EMAIL',
+          recipient: testEmail,
+          event: 'BOOKING_CONFIRMATION',
+          title: 'Booking Confirmed CF862',
+          message: 'Your booking has been accepted',
+          status: 'accepted',
+          providerMessageId: providerMsgId,
+        },
+      });
+
+      // 2. Dispatch Resend webhook for 'email.delivered'
+      const webhookRes = await request(app)
+        .post('/api/webhooks/resend')
+        .send({
+          type: 'email.delivered',
+          created_at: new Date().toISOString(),
+          data: {
+            email_id: providerMsgId,
+            to: [testEmail],
+            from: 'onboarding@resend.dev',
+            subject: 'Booking Confirmed CF862',
+          },
+        });
+
+      expect(webhookRes.status).toBe(200);
+      expect(webhookRes.body.statusUpdated).toBe('delivered');
+
+      // 3. Confirm database was updated
+      const updatedLog = await prisma.notificationLog.findFirst({
+        where: { providerMessageId: providerMsgId },
+      });
+      expect(updatedLog?.status).toBe('delivered');
+    });
+
+    it('should update NotificationLog status to bounced when email is rejected by recipient MTA', async () => {
+      const providerMsgId = `resend_msg_${Date.now()}_bounce`;
+      const testEmail = `bounced_user_${Date.now()}@invalid-domain.xyz`;
+
+      // 1. Create a notification log record
+      await prisma.notificationLog.create({
+        data: {
+          channel: 'EMAIL',
+          recipient: testEmail,
+          event: 'REGISTRATION',
+          title: 'Welcome to CredoFly',
+          message: 'Welcome message',
+          status: 'accepted',
+          providerMessageId: providerMsgId,
+        },
+      });
+
+      // 2. Dispatch Resend webhook for 'email.bounced'
+      const webhookRes = await request(app)
+        .post('/api/webhooks/resend')
+        .send({
+          type: 'email.bounced',
+          created_at: new Date().toISOString(),
+          data: {
+            email_id: providerMsgId,
+            to: [testEmail],
+            from: 'onboarding@resend.dev',
+            subject: 'Welcome to CredoFly',
+            bounce: { message: 'Domain invalid-domain.xyz not found' },
+          },
+        });
+
+      expect(webhookRes.status).toBe(200);
+      expect(webhookRes.body.statusUpdated).toBe('bounced');
+
+      // 3. Confirm database record marked bounced
+      const updatedLog = await prisma.notificationLog.findFirst({
+        where: { providerMessageId: providerMsgId },
+      });
+      expect(updatedLog?.status).toBe('bounced');
+    });
+  });
+});
