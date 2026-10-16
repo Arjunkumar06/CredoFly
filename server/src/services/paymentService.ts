@@ -67,6 +67,7 @@ export class PaymentService {
         flightInstance: {
           include: { flight: true },
         },
+        passengers: true,
       },
     });
 
@@ -138,12 +139,22 @@ export class PaymentService {
         phone: booking.contactPhone,
         bookingReference: booking.bookingReference,
         pnr: booking.pnr,
+        customerName: booking.passengers[0]?.name,
         flightCode: booking.flightInstance.flight.flightCode,
+        airlineName: booking.flightInstance.flight.airlineName,
         origin: booking.flightInstance.flight.origin,
         destination: booking.flightInstance.flight.destination,
         travelDate: booking.flightInstance.travelDate.toISOString().slice(0, 10),
         departureTime: booking.flightInstance.departureTime,
+        arrivalTime: booking.flightInstance.arrivalTime,
+        cabinClass: booking.cabinClass,
         totalAmount: booking.totalAmount.toNumber().toLocaleString('en-IN'),
+        paymentMethod: method,
+        passengers: booking.passengers.map((p) => ({
+          name: p.name,
+          type: p.type as 'ADULT' | 'CHILD',
+          seatNumber: p.seatNumber,
+        })),
       }).catch((e) => console.warn('Notification dispatch error:', e));
     }
 
@@ -170,6 +181,7 @@ export class PaymentService {
             flightInstance: {
               include: { flight: true },
             },
+            passengers: true,
           },
         },
       },
@@ -226,12 +238,22 @@ export class PaymentService {
           phone: payment.booking.contactPhone,
           bookingReference: payment.booking.bookingReference,
           pnr: payment.booking.pnr,
+          customerName: payment.booking.passengers[0]?.name,
           flightCode: payment.booking.flightInstance.flight.flightCode,
+          airlineName: payment.booking.flightInstance.flight.airlineName,
           origin: payment.booking.flightInstance.flight.origin,
           destination: payment.booking.flightInstance.flight.destination,
           travelDate: payment.booking.flightInstance.travelDate.toISOString().slice(0, 10),
           departureTime: payment.booking.flightInstance.departureTime,
+          arrivalTime: payment.booking.flightInstance.arrivalTime,
+          cabinClass: payment.booking.cabinClass,
           totalAmount: payment.booking.totalAmount.toNumber().toLocaleString('en-IN'),
+          paymentMethod: 'UPI / Google Pay (Verified)',
+          passengers: payment.booking.passengers.map((p) => ({
+            name: p.name,
+            type: p.type as 'ADULT' | 'CHILD',
+            seatNumber: p.seatNumber,
+          })),
         }).catch((e) => console.warn('Payment verified notification error:', e));
       }
 

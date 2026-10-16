@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword, generateToken } from '../utils/auth.js';
 import { UnauthorizedError, ConflictError, NotFoundError } from '../utils/errors.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { NotificationService } from '../services/notificationService.js';
+import { EmailService } from '../services/emailService.js';
 
 // Simple in-memory rate limiter for auth endpoints
 const loginAttempts: Record<string, { count: number; resetAt: number }> = {};
@@ -107,14 +108,13 @@ export class AuthController {
         },
       });
 
-      // Dispatch welcome notification
+      // Dispatch welcome notification via Resend
       if (user.email) {
-        await NotificationService.send({
-          channel: 'EMAIL',
-          recipient: user.email,
-          event: 'REGISTRATION',
-          title: `Welcome to CredoFly - Your Customer ID is ${customerId}`,
-          message: `Hello ${user.name || user.username}, your CredoFly account has been created successfully. Your unique Customer ID is ${customerId}. You can use this ID, your email, or your mobile number to log in.`,
+        await EmailService.sendWelcomeEmail({
+          name: user.name || user.username,
+          email: user.email,
+          customerId,
+          mobileNumber: user.mobileNumber,
         });
       }
 
@@ -331,12 +331,12 @@ export class AuthController {
             },
           });
 
-          await NotificationService.send({
-            channel: 'EMAIL',
-            recipient: email,
-            event: 'REGISTRATION',
-            title: `Welcome to CredoFly - Google Sign-In Successful`,
-            message: `Hello ${user.name}, your CredoFly account has been created via Google Sign-In. Your Customer ID is ${customerId}.`,
+          // Dispatch welcome notification via Resend for newly registered Google user
+          await EmailService.sendWelcomeEmail({
+            name: user.name || user.username,
+            email,
+            customerId,
+            mobileNumber: null,
           });
         }
       }

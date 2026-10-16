@@ -413,33 +413,48 @@ export class BookingService {
 
     if (paymentMethod !== 'GPAY_QR') {
       try {
+        const outboundPassengers = result.passengers.map((p) => ({
+          name: p.name,
+          type: p.type as 'ADULT' | 'CHILD',
+          seatNumber: p.seatNumber,
+        }));
+
+        let returnFlightDetails = null;
+        let combinedAmount = result.totalAmount.toNumber();
+
+        if (result.returnBooking) {
+          combinedAmount += result.returnBooking.totalAmount.toNumber();
+          returnFlightDetails = {
+            flightCode: result.returnBooking.flightInstance.flight.flightCode,
+            airlineName: result.returnBooking.flightInstance.flight.airlineName,
+            origin: result.returnBooking.flightInstance.flight.origin,
+            destination: result.returnBooking.flightInstance.flight.destination,
+            travelDate: result.returnBooking.flightInstance.travelDate.toISOString().slice(0, 10),
+            departureTime: result.returnBooking.flightInstance.departureTime,
+            arrivalTime: result.returnBooking.flightInstance.arrivalTime,
+            cabinClass: result.returnBooking.cabinClass,
+          };
+        }
+
         await NotificationService.notifyBookingConfirmation({
           email: result.contactEmail,
           phone: result.contactPhone,
           bookingReference: result.bookingReference,
           pnr: result.pnr,
+          customerName: result.passengers[0]?.name,
           flightCode: result.flightInstance.flight.flightCode,
+          airlineName: result.flightInstance.flight.airlineName,
           origin: result.flightInstance.flight.origin,
           destination: result.flightInstance.flight.destination,
           travelDate: result.flightInstance.travelDate.toISOString().slice(0, 10),
           departureTime: result.flightInstance.departureTime,
-          totalAmount: result.totalAmount.toNumber().toLocaleString('en-IN'),
+          arrivalTime: result.flightInstance.arrivalTime,
+          cabinClass: result.cabinClass,
+          totalAmount: combinedAmount.toLocaleString('en-IN'),
+          paymentMethod: result.paymentMethod || 'Confirmed',
+          passengers: outboundPassengers,
+          returnFlight: returnFlightDetails,
         });
-
-        if (result.returnBooking) {
-          await NotificationService.notifyBookingConfirmation({
-            email: result.returnBooking.contactEmail,
-            phone: result.returnBooking.contactPhone,
-            bookingReference: result.returnBooking.bookingReference,
-            pnr: result.returnBooking.pnr,
-            flightCode: result.returnBooking.flightInstance.flight.flightCode,
-            origin: result.returnBooking.flightInstance.flight.origin,
-            destination: result.returnBooking.flightInstance.flight.destination,
-            travelDate: result.returnBooking.flightInstance.travelDate.toISOString().slice(0, 10),
-            departureTime: result.returnBooking.flightInstance.departureTime,
-            totalAmount: result.returnBooking.totalAmount.toNumber().toLocaleString('en-IN'),
-          });
-        }
       } catch (e) {
         console.warn('Booking confirmation notification error:', e);
       }
@@ -732,8 +747,20 @@ export class BookingService {
         email: result.recipientEmail,
         phone: result.recipientPhone,
         bookingReference: result.updatedBooking.bookingReference,
+        pnr: result.updatedBooking.pnr,
+        customerName: result.updatedBooking.passengers[0]?.name,
+        flightCode: result.updatedBooking.flightInstance?.flight?.flightCode,
+        origin: result.updatedBooking.flightInstance?.flight?.origin,
+        destination: result.updatedBooking.flightInstance?.flight?.destination,
+        travelDate: result.updatedBooking.flightInstance?.travelDate ? result.updatedBooking.flightInstance.travelDate.toISOString().slice(0, 10) : 'Upcoming',
+        totalPaid: result.totalAmount,
         refundAmount: result.totalAmount.toLocaleString('en-IN'),
         cancellationFee: '0',
+        isPartial: false,
+        cancelledPassengers: result.updatedBooking.passengers.map((p) => ({
+          name: p.name,
+          seatNumber: p.seatNumber,
+        })),
       });
     } catch (err) {
       console.warn('Cancellation notification error:', err);
@@ -882,12 +909,28 @@ export class BookingService {
 
     if ('booking' in result) {
       try {
+        const cancelledPassengers = result.booking.passengers
+          .filter((p) => p.isCancelled)
+          .map((p) => ({
+            name: p.name,
+            seatNumber: p.seatNumber,
+          }));
+
         await NotificationService.notifyCancellation({
           email: result.recipientEmail,
           phone: result.recipientPhone,
           bookingReference: result.booking.bookingReference,
+          pnr: result.booking.pnr,
+          customerName: result.booking.passengers[0]?.name,
+          flightCode: result.booking.flightInstance?.flight?.flightCode,
+          origin: result.booking.flightInstance?.flight?.origin,
+          destination: result.booking.flightInstance?.flight?.destination,
+          travelDate: result.booking.flightInstance?.travelDate ? result.booking.flightInstance.travelDate.toISOString().slice(0, 10) : 'Upcoming',
+          totalPaid: result.booking.totalAmount.toNumber(),
           refundAmount: result.refundAmount.toLocaleString('en-IN'),
           cancellationFee: '0',
+          isPartial: true,
+          cancelledPassengers,
         });
       } catch (err) {
         console.warn('Partial cancellation notification error:', err);

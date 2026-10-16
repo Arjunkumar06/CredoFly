@@ -181,7 +181,7 @@ export const HomePage: React.FC = () => {
               <div className="relative w-full max-w-lg lg:max-w-none">
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-blue-900/10 border-4 border-white aspect-[4/3] bg-gradient-to-tr from-sky-100 to-blue-50">
                   <img
-                    src="/images/hero-airplane.png"
+                    src="/images/hero-airplane.jpg"
                     alt="CredoFly Airplane in Sky"
                     className="w-full h-full object-cover object-center transform hover:scale-105 transition-transform duration-700"
                     onError={(e) => {

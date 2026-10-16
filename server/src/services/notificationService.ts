@@ -1,4 +1,7 @@
 import { prisma } from '../db.js';
+import { EmailService } from './emailService.js';
+import { FlightLegDetails, BookingPassengerInfo } from '../templates/booking-confirmation-email.js';
+import { CancelledPassengerInfo } from '../templates/cancellation-email.js';
 
 export interface NotificationPayload {
   channel: 'EMAIL' | 'SMS';
@@ -10,46 +13,47 @@ export interface NotificationPayload {
 
 export class NotificationService {
   /**
-   * Dispatch notification via configured adapters (Email / SMS) with audit logging in PostgreSQL
+   * Dispatch notification via configured adapters (Email via Resend / SMS via Twilio/Sandbox)
+   * with audit logging in PostgreSQL
    */
   static async send(payload: NotificationPayload) {
     const { channel, recipient, event, title, message } = payload;
 
-    // Check if provider credentials exist in environment
-    const hasSmtp = !!process.env.SMTP_HOST && !!process.env.SMTP_USER;
-    const hasTwilio = !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN;
+    if (channel === 'EMAIL') {
+      return await EmailService.sendEmail({
+        to: recipient,
+        subject: title || `CredoFly Update: ${event}`,
+        text: message,
+        html: `<div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-top: 0;">${title || 'CredoFly Notification'}</h2>
+          <p style="font-size: 15px; line-height: 1.6; white-space: pre-line;">${message}</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+          <p style="font-size: 12px; color: #64748b;">CredoFly Aviation Pvt Ltd • Your Journey, Made Simple.</p>
+        </div>`,
+        event: event as any,
+      });
+    }
 
+    // SMS Dispatch logic
+    const hasTwilio = !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN;
     let deliveryStatus = 'SENT';
     let errorMessage: string | null = null;
 
     try {
-      if (channel === 'EMAIL') {
-        if (hasSmtp) {
-          // If real SMTP is configured, real transport would be called here
-          console.log(`📧 [Real SMTP Dispatch] To: ${recipient} | Subject: ${title} | Event: ${event}`);
-        } else {
-          // Robust Sandbox / Mock Adapter: log clearly without failing transaction
-          console.log(`📧 [CredoFly Email Adapter (Dev/Sandbox)] To: ${recipient} | Subject: ${title || event} | Event: ${event}`);
-        }
-      } else if (channel === 'SMS') {
-        if (hasTwilio) {
-          // If real Twilio / AWS SNS is configured, provider would be called here
-          console.log(`📱 [Real SMS Dispatch] To: ${recipient} | Event: ${event}`);
-        } else {
-          // Sandbox SMS Adapter
-          console.log(`📱 [CredoFly SMS Adapter (Dev/Sandbox)] To: ${recipient} | Event: ${event} | Message: ${message}`);
-        }
+      if (hasTwilio) {
+        console.log(`📱 [Twilio SMS Dispatch] To: ${recipient} | Event: ${event}`);
+      } else {
+        console.log(`📱 [CredoFly SMS Sandbox] To: ${recipient} | Event: ${event} | Message: ${message}`);
       }
     } catch (err: any) {
       deliveryStatus = 'FAILED';
-      errorMessage = err.message || 'Notification provider dispatch error';
+      errorMessage = err?.message || 'SMS dispatch error';
     }
 
-    // Persist immutable audit log record in database
     try {
       return await prisma.notificationLog.create({
         data: {
-          channel,
+          channel: 'SMS',
           recipient,
           event,
           title: title || event,
@@ -59,35 +63,77 @@ export class NotificationService {
         },
       });
     } catch (dbErr) {
-      console.warn('Could not record notification log:', dbErr);
+      console.warn('Could not record SMS notification log:', dbErr);
       return null;
     }
   }
 
   /**
-   * Send booking confirmation via both email and SMS
+   * Send booking confirmation via both email (Resend) and SMS
    */
   static async notifyBookingConfirmation(params: {
     email?: string | null;
     phone?: string | null;
     bookingReference: string;
     pnr?: string | null;
+    customerName?: string;
     flightCode: string;
+    airlineName?: string;
     origin: string;
     destination: string;
     travelDate: string;
     departureTime: string;
-    totalAmount: string;
+    arrivalTime?: string;
+    cabinClass?: string;
+    totalAmount: string | number;
+    paymentMethod?: string;
+    passengers?: BookingPassengerInfo[];
+    returnFlight?: FlightLegDetails | null;
   }) {
-    const { email, phone, bookingReference, pnr, flightCode, origin, destination, travelDate, departureTime, totalAmount } = params;
+    const {
+      email,
+      phone,
+      bookingReference,
+      pnr,
+      customerName,
+      flightCode,
+      airlineName,
+      origin,
+      destination,
+      travelDate,
+      departureTime,
+      arrivalTime,
+      cabinClass = 'ECONOMY',
+      totalAmount,
+      paymentMethod = 'CONFIRMED',
+      passengers = [],
+      returnFlight,
+    } = params;
 
     if (email) {
-      await this.send({
-        channel: 'EMAIL',
-        recipient: email,
-        event: 'BOOKING_CONFIRMATION',
-        title: `CredoFly Flight Confirmation - PNR: ${pnr || bookingReference}`,
-        message: `Your flight ${flightCode} from ${origin} to ${destination} on ${travelDate} at ${departureTime} is confirmed. Booking Reference: ${bookingReference}, PNR: ${pnr || bookingReference}. Total Paid: ₹${totalAmount}. Have a wonderful flight!`,
+      await EmailService.sendBookingConfirmationEmail({
+        bookingReference,
+        pnr,
+        customerName,
+        contactEmail: email,
+        contactPhone: phone,
+        cabinClass,
+        paymentMethod,
+        totalAmount,
+        outboundFlight: {
+          flightCode,
+          airlineName: airlineName || 'CredoFly Express',
+          origin,
+          destination,
+          travelDate,
+          departureTime,
+          arrivalTime,
+          cabinClass,
+        },
+        returnFlight,
+        passengers: passengers.length > 0 ? passengers : [
+          { name: customerName || 'Primary Traveler', type: 'ADULT', seatNumber: null }
+        ],
       });
     }
 
@@ -102,26 +148,59 @@ export class NotificationService {
   }
 
   /**
-   * Send cancellation confirmation
+   * Send cancellation confirmation via both email (Resend) and SMS
    */
   static async notifyCancellation(params: {
     email?: string | null;
     phone?: string | null;
     bookingReference: string;
-    refundAmount: string;
-    cancellationFee: string;
+    pnr?: string | null;
+    customerName?: string;
+    flightCode?: string;
+    origin?: string;
+    destination?: string;
+    travelDate?: string;
+    refundAmount: string | number;
+    cancellationFee: string | number;
+    totalPaid?: string | number;
+    isPartial?: boolean;
+    cancelledPassengers?: CancelledPassengerInfo[];
+    tierLabel?: string;
   }) {
-    const { email, phone, bookingReference, refundAmount, cancellationFee } = params;
-
-    const message = `CredoFly: Booking ${bookingReference} has been cancelled. Refund amount: ₹${refundAmount} (Cancellation Fee: ₹${cancellationFee}). The refund will reflect in your account within 3-5 business days.`;
+    const {
+      email,
+      phone,
+      bookingReference,
+      pnr,
+      customerName,
+      flightCode = 'CredoFly Flight',
+      origin = 'Origin',
+      destination = 'Destination',
+      travelDate = 'Upcoming',
+      refundAmount,
+      cancellationFee,
+      totalPaid,
+      isPartial,
+      cancelledPassengers,
+      tierLabel,
+    } = params;
 
     if (email) {
-      await this.send({
-        channel: 'EMAIL',
-        recipient: email,
-        event: 'CANCELLATION',
-        title: `CredoFly Cancellation & Refund Notice - Ref: ${bookingReference}`,
-        message,
+      await EmailService.sendCancellationEmail({
+        bookingReference,
+        pnr,
+        customerName,
+        contactEmail: email,
+        flightCode,
+        origin,
+        destination,
+        travelDate,
+        refundAmount,
+        cancellationFee,
+        totalPaid: totalPaid ?? refundAmount,
+        isPartial,
+        cancelledPassengers,
+        tierLabel,
       });
     }
 
@@ -130,7 +209,7 @@ export class NotificationService {
         channel: 'SMS',
         recipient: phone,
         event: 'CANCELLATION',
-        message,
+        message: `CredoFly: Booking ${bookingReference} ${isPartial ? 'partially cancelled' : 'cancelled'}. Refund amount: ₹${refundAmount} (Cancellation Fee: ₹${cancellationFee}). The refund will reflect in your account within 3-5 business days.`,
       });
     }
   }

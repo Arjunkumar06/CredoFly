@@ -219,8 +219,21 @@ export class CancellationService {
         email: booking.contactEmail,
         phone: booking.contactPhone,
         bookingReference: booking.bookingReference,
+        pnr: booking.pnr,
+        customerName: booking.passengers?.[0]?.name,
+        flightCode: booking.flightInstance?.flight?.flightCode,
+        origin: booking.flightInstance?.flight?.origin,
+        destination: booking.flightInstance?.flight?.destination,
+        travelDate: booking.flightInstance?.travelDate ? booking.flightInstance.travelDate.toISOString().slice(0, 10) : 'Upcoming',
+        totalPaid: totalPaid.toLocaleString('en-IN'),
         refundAmount: refundAmount.toLocaleString('en-IN'),
         cancellationFee: cancellationFee.toLocaleString('en-IN'),
+        isPartial: false,
+        cancelledPassengers: booking.passengers?.map((p) => ({
+          name: p.name,
+          seatNumber: p.seatNumber,
+        })),
+        tierLabel: tier.tierLabel,
       }).catch((e) => console.warn('Cancellation notification error:', e));
 
       return {

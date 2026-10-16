@@ -310,26 +310,66 @@ Open your browser at **http://localhost:5173** to access CredoFly.
 
 ---
 
-## 9. Automated Testing
+---
 
-Integration tests verify all core business rules:
-- Customer registration and login
+## 9. Resend Email Service Integration & Notifications
+
+CredoFly integrates transactional email delivery using the official **Resend Node.js SDK** (`resend`).
+
+### Configuration (`.env`)
+
+```env
+# Resend Email Service Configuration
+RESEND_API_KEY="re_your_api_key_here"
+RESEND_FROM_EMAIL="onboarding@resend.dev"
+APP_BASE_URL="http://localhost:5001"
+```
+
+> **Testing Sandbox Notice:**  
+> When using the default sender `onboarding@resend.dev`, Resend's free tier restricts email delivery exclusively to the verified account owner's email address. Once a custom domain is verified in your Resend dashboard (e.g., `notifications@credofly.com`), transactional emails can be delivered to any customer email.
+> 
+> **Zero-Crash Sandbox Fallback:**  
+> If `RESEND_API_KEY` is omitted or left empty, CredoFly gracefully falls back to non-blocking sandbox mode. All notifications are logged to the console and audited in the PostgreSQL `notification_logs` table without interrupting or failing user bookings.
+
+### Automated Transactional Email Events
+
+| Event | Trigger | Template Features |
+| :--- | :--- | :--- |
+| **Welcome Email** | Initial customer registration or first-time Google sign-up *(never on repeat Google logins)* | Brand header, personalized greeting, auto-generated Customer ID (`CF-CUST-XXXXXX`), login instructions, security reminders, and quick-booking CTA. |
+| **Booking Confirmation** | Successful booking or verified payment | Outbound & return (dual-leg) schedules, seat numbers (e.g. `4A`), cabin class, authoritative fare breakdown, PNR, check-in guidelines, and link to My Bookings. |
+| **Cancellation Notice** | Full or partial booking cancellation | Detailed refund calculation (total paid, cancellation fee, net refund amount, applied policy tier), released seat numbers, and refund turnaround timeline (3–5 business days). |
+
+### Post-Commit Dispatch & Reliability
+All email dispatches occur strictly **after** database transactions have committed. If network latency or provider errors occur, the transaction remains safe and confirmed, and the error is recorded in the PostgreSQL `notification_logs` table.
+
+---
+
+## 10. Automated Testing
+
+Integration and unit tests verify all core business rules:
+- Customer registration, login, and multi-factor authentication (Customer ID, email, mobile)
 - Rejection of duplicate usernames and invalid input
-- Administrator HTTP Basic Authentication validation
-- Flight search and server-side fare calculation
-- Concurrency and overbooking protection (multiple simultaneous requests)
-- Full and partial cancellation with accurate seat inventory restoration
-- Cancellation idempotency (preventing double inventory releases)
-- Customer booking ownership authorization
+- Administrator HTTP Basic Authentication validation with timing-safe comparison
+- Flight search, schedule generation, and authoritative server-side fare calculation
+- Visual seat selection, 8-seat maximum enforcement, and atomic database reservation
+- Full and partial cancellation with exact refund tier policy and seat restoration
+- Dual-leg round-trip booking and synchronized cancellation
+- **Resend Email Service unit and integration testing (`email_resend.test.ts`)**:
+  - Template rendering with responsive HTML and plain-text fallback
+  - HTML input sanitization and XSS prevention
+  - Safe sandbox fallback when API key is omitted
+  - Welcome email sent on first Google login, and suppressed on subsequent logins
+  - Immutable audit logging in the `notification_logs` PostgreSQL table
 
-To execute the test suite:
+To execute the full test suite (68 tests):
 ```bash
 npm run test
 ```
 
+
 ---
 
-## 10. Design Assumptions & Technical Interview Walkthrough
+## 11. Design Assumptions & Technical Interview Walkthrough
 
 ### 1. Payment Scope Assumption
 The coding assignment specifications present conflicting requirements: one clause calls for immediate booking confirmation without payment, while another lists payment gateways as potential extensions.  
