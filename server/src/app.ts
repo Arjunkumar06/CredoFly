@@ -28,6 +28,27 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+// API Root route - returns status and available service endpoints
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'Flight booking API is running',
+    service: 'CredoFly Flight Booking API Engine',
+    version: '1.0.0',
+    documentation: '/api/health',
+    clientUrl: process.env.CLIENT_URL || 'http://localhost:5001',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      flights: '/api/flights',
+      bookings: '/api/bookings',
+      payment: '/api/payment',
+      admin: '/api/admin',
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

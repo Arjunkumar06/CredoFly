@@ -23,6 +23,23 @@ describe('CredoFly API Test Suite', () => {
     }
   });
 
+  describe('0. System & Health Endpoints', () => {
+    it('should return 200 OK on root GET / endpoint with API status', async () => {
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body.message).toBe('Flight booking API is running');
+      expect(res.body.endpoints).toBeDefined();
+    });
+
+    it('should return 200 OK on /api/health endpoint', async () => {
+      const res = await request(app).get('/api/health');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body.timestamp).toBeDefined();
+    });
+  });
+
   describe('1. Customer Authentication', () => {
     it('should register a new customer', async () => {
       const res = await request(app)

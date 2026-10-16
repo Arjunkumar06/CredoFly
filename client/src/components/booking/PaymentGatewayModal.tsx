@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CreditCard,
   QrCode,
@@ -10,8 +11,6 @@ import {
   Lock,
   Copy,
   Check,
-  Smartphone,
-  ExternalLink,
 } from 'lucide-react';
 import { paymentApi } from '../../services/api';
 import { PaymentConfig } from '../../types';
@@ -56,6 +55,27 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
   const [cardCvv, setCardCvv] = useState('123');
   const [selectedBank, setSelectedBank] = useState('HDFC Bank');
 
+  // Prevent background scrolling when modal is open and handle Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isProcessing) {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, isProcessing, onClose]);
+
   useEffect(() => {
     if (isOpen) {
       paymentApi
@@ -99,18 +119,13 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
     }, 1500);
   };
 
-  // UPI deep link
-  const upiDeepLink = `upi://pay?pa=${paymentConfig.upiId}&pn=${encodeURIComponent(
-    paymentConfig.merchantName
-  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`CredoFly ${bookingSummary.flightCode}`)}`;
-
   // SVG QR Code generator representation
   const renderQrCodeSvg = () => {
     return (
-      <div className="relative p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
+      <div className="relative p-2.5 sm:p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
         <svg
           viewBox="0 0 200 200"
-          className="w-44 h-44 mx-auto"
+          className="w-36 h-36 sm:w-44 sm:h-44 mx-auto"
           shapeRendering="crispEdges"
         >
           {/* Outer Border / Quiet Zone */}
@@ -194,112 +209,128 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-navy-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden my-6">
-        {/* Header */}
-        <div className="bg-navy-950 text-white p-5 sm:p-6 flex items-center justify-between">
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-navy-950/75 backdrop-blur-sm p-3 sm:p-4 md:p-6 flex justify-center items-center"
+      style={{ minHeight: '100%' }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isProcessing) {
+          onClose();
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="payment-modal-title"
+    >
+      <div
+        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3.5rem)] my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Fixed Header */}
+        <div className="flex-shrink-0 bg-navy-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
-              <Lock className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
+              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base tracking-tight">
+              <h3 id="payment-modal-title" className="font-extrabold text-sm sm:text-base tracking-tight">
                 CredoFly <span className="text-blue-400">Secure Payment</span>
               </h3>
-              <p className="text-xs text-slate-400">256-bit SSL Encrypted &bull; PCI Compliant</p>
+              <p className="text-[11px] sm:text-xs text-slate-400">256-bit SSL Encrypted &bull; PCI Compliant</p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition"
+            aria-label="Close payment modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Demo Notice Banner */}
-        <div className="bg-amber-50 border-b border-amber-200/80 px-5 py-2.5 flex items-center space-x-2 text-xs text-amber-900 font-medium">
+        <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200/80 px-4 sm:px-5 py-2 sm:py-2.5 flex items-center space-x-2 text-xs text-amber-900 font-medium">
           <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <span>
             <strong>Coding Assignment Sandbox:</strong> Simulated Google Pay QR workflow with real-time UTR tracking.
           </span>
         </div>
 
-        <div className="p-5 sm:p-7 space-y-5">
+        {/* Vertically Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 overscroll-contain">
           {/* Order Summary Pill */}
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+          <div className="p-3.5 sm:p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
             <div>
-              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">
                 Total Payable Amount
               </p>
               <p className="text-xs text-slate-700 font-semibold mt-0.5">
                 {bookingSummary.flightCode} &bull; {bookingSummary.route} ({bookingSummary.passengersCount} Pax)
               </p>
             </div>
-            <div className="text-2xl font-black text-blue-600">
+            <div className="text-xl sm:text-2xl font-black text-blue-600">
               ₹{amount.toLocaleString('en-IN')}
             </div>
           </div>
 
           {/* Payment Methods Tabs */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => setSelectedMethod('UPI')}
-              className={`p-3 rounded-2xl border text-center transition flex flex-col items-center space-y-1.5 ${
+              className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border text-center transition flex flex-col items-center space-y-1 sm:space-y-1.5 ${
                 selectedMethod === 'UPI'
                   ? 'border-blue-600 bg-blue-50/60 text-blue-700 font-bold shadow-sm'
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <QrCode className="w-5 h-5 text-blue-600" />
-              <span className="text-xs">Google Pay QR</span>
+              <QrCode className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+              <span className="text-[11px] sm:text-xs">Google Pay QR</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSelectedMethod('DEMO_PAY')}
-              className={`p-3 rounded-2xl border text-center transition flex flex-col items-center space-y-1.5 ${
+              className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border text-center transition flex flex-col items-center space-y-1 sm:space-y-1.5 ${
                 selectedMethod === 'DEMO_PAY'
                   ? 'border-blue-600 bg-blue-50/60 text-blue-700 font-bold shadow-sm'
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <Zap className="w-5 h-5 text-amber-500" />
-              <span className="text-xs">Quick Demo</span>
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+              <span className="text-[11px] sm:text-xs">Quick Demo</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSelectedMethod('CARD')}
-              className={`p-3 rounded-2xl border text-center transition flex flex-col items-center space-y-1.5 ${
+              className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border text-center transition flex flex-col items-center space-y-1 sm:space-y-1.5 ${
                 selectedMethod === 'CARD'
                   ? 'border-blue-600 bg-blue-50/60 text-blue-700 font-bold shadow-sm'
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <CreditCard className="w-5 h-5" />
-              <span className="text-xs">Credit/Debit</span>
+              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-[11px] sm:text-xs">Credit/Debit</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSelectedMethod('NET_BANKING')}
-              className={`p-3 rounded-2xl border text-center transition flex flex-col items-center space-y-1.5 ${
+              className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border text-center transition flex flex-col items-center space-y-1 sm:space-y-1.5 ${
                 selectedMethod === 'NET_BANKING'
                   ? 'border-blue-600 bg-blue-50/60 text-blue-700 font-bold shadow-sm'
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <Building className="w-5 h-5" />
-              <span className="text-xs">Net Banking</span>
+              <Building className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-[11px] sm:text-xs">Net Banking</span>
             </button>
           </div>
 
           {/* Tab Content */}
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+          <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200">
             {/* Google Pay / UPI QR Method */}
             {selectedMethod === 'UPI' && (
               <div className="space-y-4">
@@ -323,7 +354,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
                         <button
                           type="button"
                           onClick={handleCopyUpi}
-                          className="p-1 rounded-lg border border-slate-200 hover:bg-white text-slate-600"
+                          className="p-1 rounded-lg border border-slate-200 hover:bg-white text-slate-600 transition"
                           title="Copy UPI ID"
                         >
                           {copiedUpi ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
@@ -359,7 +390,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setUtrNumber(`CF${Date.now().toString().slice(-8)}`)}
-                      className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[11px] font-bold transition"
+                      className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[11px] font-bold transition flex-shrink-0"
                     >
                       Generate Demo UTR
                     </button>
@@ -458,7 +489,7 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
               type="button"
               disabled={isProcessing}
               onClick={handlePay}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition text-sm"
+              className="w-full py-3 sm:py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition text-sm cursor-pointer"
             >
               {isProcessing ? (
                 <>
@@ -476,4 +507,8 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
