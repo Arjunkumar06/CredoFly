@@ -289,113 +289,126 @@ export const SearchResultsPage: React.FC = () => {
 
           {/* Collapsible Modify Form */}
           {isModifying && (
-            <form onSubmit={handleApplyModifiedSearch} className="mt-6 pt-6 border-t border-slate-100">
-              <div className="flex space-x-3 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setModTripType('oneway')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    modTripType === 'oneway' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  One Way
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModTripType('roundtrip')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    modTripType === 'roundtrip' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  Round Trip
-                </button>
-              </div>
+            <div className="mt-6 pt-6 border-t border-white/20">
+              <form
+                onSubmit={handleApplyModifiedSearch}
+                className="bg-white rounded-2xl p-5 shadow-2xl border border-slate-200 text-slate-900"
+              >
+                <div className="flex space-x-3 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setModTripType('oneway')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      modTripType === 'oneway'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    One Way
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModTripType('roundtrip')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      modTripType === 'roundtrip'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Round Trip
+                  </button>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">From</label>
-                  <input
-                    type="text"
-                    value={modOrigin}
-                    onChange={(e) => setModOrigin(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">To</label>
-                  <input
-                    type="text"
-                    value={modDestination}
-                    onChange={(e) => setModDestination(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Departure</label>
-                  <input
-                    type="date"
-                    value={modDate}
-                    min={new Date().toISOString().slice(0, 10)}
-                    onChange={(e) => setModDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs"
-                    required
-                  />
-                </div>
-                {modTripType === 'roundtrip' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Return</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">From</label>
                     <input
-                      type="date"
-                      value={modReturnDate}
-                      min={modDate}
-                      onChange={(e) => setModReturnDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs"
+                      type="text"
+                      value={modOrigin}
+                      onChange={(e) => setModOrigin(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
-                )}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Passengers</label>
-                  <div className="flex space-x-1">
-                    <select
-                      value={modAdults}
-                      onChange={(e) => setModAdults(Number(e.target.value))}
-                      className="w-1/2 px-2 py-2 border border-slate-300 rounded-xl text-xs"
-                    >
-                      {[1, 2, 3, 4, 5, 6].map((n) => (
-                        <option key={n} value={n}>{n} Ad</option>
-                      ))}
-                    </select>
-                    <select
-                      value={modChildren}
-                      onChange={(e) => setModChildren(Number(e.target.value))}
-                      className="w-1/2 px-2 py-2 border border-slate-300 rounded-xl text-xs"
-                    >
-                      {[0, 1, 2, 3, 4].map((n) => (
-                        <option key={n} value={n}>{n} Ch</option>
-                      ))}
-                    </select>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">To</label>
+                    <input
+                      type="text"
+                      value={modDestination}
+                      onChange={(e) => setModDestination(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Departure</label>
+                    <input
+                      type="date"
+                      value={modDate}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setModDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  {modTripType === 'roundtrip' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Return</label>
+                      <input
+                        type="date"
+                        value={modReturnDate}
+                        min={modDate}
+                        onChange={(e) => setModReturnDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Passengers</label>
+                    <div className="flex space-x-1">
+                      <select
+                        value={modAdults}
+                        onChange={(e) => setModAdults(Number(e.target.value))}
+                        className="w-1/2 px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                      >
+                        {[1, 2, 3, 4, 5, 6].map((n) => (
+                          <option key={n} value={n}>
+                            {n} Ad
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={modChildren}
+                        onChange={(e) => setModChildren(Number(e.target.value))}
+                        className="w-1/2 px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                      >
+                        {[0, 1, 2, 3, 4].map((n) => (
+                          <option key={n} value={n}>
+                            {n} Ch
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4 flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModifying(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm"
-                >
-                  Update Results
-                </button>
-              </div>
-            </form>
+                <div className="mt-4 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsModifying(false)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition"
+                  >
+                    Update Results
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
         </div>
       </HeroBackground>

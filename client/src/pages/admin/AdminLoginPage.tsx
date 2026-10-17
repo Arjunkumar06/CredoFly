@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Lock, ShieldAlert, ArrowRight, Plane, KeyRound, Check, Eye, EyeOff } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import { useAdminAuth } from '../../context/AdminAuthContext';
+import { BrandLogo } from '../../components/common/BrandLogo';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -45,14 +46,14 @@ export const AdminLoginPage: React.FC = () => {
       <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex w-12 h-12 rounded-2xl bg-navy-950 items-center justify-center text-blue-400 mb-2 shadow-md">
-            <Lock className="w-6 h-6" />
+          <div className="flex justify-center mb-2">
+            <BrandLogo size="lg" />
           </div>
           <div className="flex items-center justify-center space-x-2">
             <span className="text-xl font-bold text-navy-950">
               Credo<span className="text-blue-600">Fly</span>
             </span>
-            <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+            <span className="text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">
               Admin
             </span>
           </div>

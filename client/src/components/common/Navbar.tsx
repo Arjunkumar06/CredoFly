@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Plane, User as UserIcon, LogOut, Shield, Tag, HelpCircle, Menu, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { BrandLogo } from './BrandLogo';
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -22,18 +23,8 @@ export const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo */}
-          <Link to="/" className="flex items-center space-x-2.5 group">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 group-hover:bg-blue-500 transition-colors">
-              <Plane className="w-5 h-5 text-white transform -rotate-45" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xl font-bold tracking-tight text-white flex items-center">
-                Credo<span className="text-blue-400">Fly</span>
-              </span>
-              <span className="text-[10px] text-slate-400 -mt-1 tracking-wider uppercase font-medium">
-                Airlines
-              </span>
-            </div>
+          <Link to="/" className="flex items-center group">
+            <BrandLogo size="md" withText textSubtitle="Airlines" theme="dark" />
           </Link>
 
           {/* Desktop Nav Links */}

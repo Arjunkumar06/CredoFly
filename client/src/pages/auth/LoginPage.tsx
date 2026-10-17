@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plane, AlertCircle, ArrowRight, KeyRound, CheckCircle2, X } from 'lucide-react';
 import { authApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { BrandLogo } from '../../components/common/BrandLogo';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -92,8 +93,8 @@ export const LoginPage: React.FC = () => {
       <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 shadow-xl shadow-slate-200/80 border border-slate-200/80 relative z-10">
         {/* Brand Header */}
         <div className="text-center space-y-2 mb-6">
-          <div className="inline-flex w-12 h-12 rounded-2xl bg-blue-600 items-center justify-center shadow-lg shadow-blue-500/30 text-white mb-2">
-            <Plane className="w-6 h-6 transform -rotate-45" />
+          <div className="flex justify-center mb-2">
+            <BrandLogo size="lg" />
           </div>
           <h2 className="text-2xl font-black text-navy-950 tracking-tight">
             Welcome Back to CredoFly

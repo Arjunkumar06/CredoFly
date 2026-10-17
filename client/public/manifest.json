@@ -1,0 +1,17 @@
+{
+  "short_name": "CredoFly",
+  "name": "CredoFly Airlines",
+  "description": "Premier Flight Booking Engine",
+  "icons": [
+    {
+      "src": "/images/credofly-logo.png",
+      "type": "image/png",
+      "sizes": "320x320",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#030712",
+  "theme_color": "#2563eb",
+  "display": "standalone"
+}

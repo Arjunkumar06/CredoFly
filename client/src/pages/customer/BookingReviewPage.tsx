@@ -25,6 +25,7 @@ import { BookingStepper } from '../../components/booking/BookingStepper';
 import { PaymentGatewayModal } from '../../components/booking/PaymentGatewayModal';
 import { SeatSelectionMap } from '../../components/booking/SeatSelectionMap';
 import { HeroBackground } from '../../components/common/HeroBackground';
+import { LoadingScreen } from '../../components/common/LoadingScreen';
 
 interface FormPassenger {
   title: string;
@@ -327,10 +328,10 @@ export const BookingReviewPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4">
-        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm font-semibold text-slate-600">Retrieving real-time flight details & fare rules...</p>
-      </div>
+      <LoadingScreen
+        message="Retrieving Real-Time Flight Details & Fare Rules..."
+        subMessage="Locking seat inventory snapshot from central database"
+      />
     );
   }
 

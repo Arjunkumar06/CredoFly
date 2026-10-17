@@ -22,6 +22,7 @@ import { bookingApi, paymentApi } from '../../services/api';
 import { Booking, CancellationQuote } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { ErrorBoundary } from '../../components/common/ErrorBoundary';
+import { LoadingScreen } from '../../components/common/LoadingScreen';
 
 export const BookingDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -199,9 +200,10 @@ export const BookingDetailsPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
+      <LoadingScreen
+        message="Loading Reservation Details..."
+        subMessage="Retrieving ticket, passenger manifests, and cancellation options"
+      />
     );
   }
 

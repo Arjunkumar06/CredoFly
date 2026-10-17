@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plane, ShieldCheck, Headphones, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BrandLogo } from './BrandLogo';
 
 export const Footer: React.FC = () => {
   return (
@@ -9,14 +10,7 @@ export const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           {/* Brand Info */}
           <div className="space-y-4">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                <Plane className="w-4 h-4 text-white transform -rotate-45" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-white">
-                Credo<span className="text-blue-400">Fly</span>
-              </span>
-            </div>
+            <BrandLogo size="md" withText textSubtitle="Airlines" theme="dark" />
             <p className="text-sm text-slate-400 leading-relaxed">
               Your Journey, Made Simple. Fast, reliable, and comfortable airline booking
               experience across premier destinations.

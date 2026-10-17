@@ -12,6 +12,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { BrandLogo } from '../components/common/BrandLogo';
+import { LoadingScreen } from '../components/common/LoadingScreen';
 
 export const AdminLayout: React.FC = () => {
   const { isAdminAuthenticated, adminUsername, logoutAdmin, isLoading } = useAdminAuth();
@@ -26,12 +28,12 @@ export const AdminLayout: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center text-white">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-slate-400">Verifying administrator credentials...</p>
-        </div>
-      </div>
+      <LoadingScreen
+        theme="dark"
+        fullScreen
+        message="Verifying administrator credentials..."
+        subMessage="Connecting to CredoFly secure airline management engine"
+      />
     );
   }
 
@@ -63,9 +65,7 @@ export const AdminLayout: React.FC = () => {
           {/* Logo Area */}
           <div className="h-16 flex items-center px-6 border-b border-slate-800">
             <Link to="/admin/dashboard" className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-md">
-                <Plane className="w-4 h-4 text-white transform -rotate-45" />
-              </div>
+              <BrandLogo size="sm" />
               <div>
                 <span className="font-bold tracking-tight text-white text-base">
                   Credo<span className="text-blue-400">Fly</span>

@@ -24,6 +24,7 @@ import {
 import { bookingApi } from '../../services/api';
 import { Booking } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { LoadingScreen } from '../../components/common/LoadingScreen';
 
 export const BookingConfirmationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -75,10 +76,10 @@ export const BookingConfirmationPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-3">
-        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-600 text-sm font-medium">Loading flight confirmation...</p>
-      </div>
+      <LoadingScreen
+        message="Loading Flight Confirmation & E-Ticket..."
+        subMessage="Fetching verified PNR and passenger details from database"
+      />
     );
   }
 
