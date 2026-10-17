@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: credofly
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: credofly-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: adminpassword123
+      - key: RESEND_FROM_EMAIL
+        value: onboarding@resend.dev
+
+databases:
+  - name: credofly-db
+    plan: free
+    region: oregon
+    databaseName: flight_booking_db
+    user: credofly_user
