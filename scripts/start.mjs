@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,4 +33,5 @@ if (process.env.DATABASE_URL) {
 }
 
 console.log('✈️ Launching CredoFly server...');
-await import('../server/dist/index.js');
+const serverEntry = pathToFileURL(path.resolve(rootDir, 'server/dist/index.js')).href;
+await import(serverEntry);
