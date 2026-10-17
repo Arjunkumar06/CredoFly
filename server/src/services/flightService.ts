@@ -47,7 +47,7 @@ export class FlightService {
     // 2. Resolve or generate FlightInstances for this specific date
     for (const flight of matchingFlights) {
       for (const schedule of flight.schedules) {
-        // Upsert FlightInstance safely so duplicates are never created
+        // Upsert FlightInstance safely and synchronize updated fares/timings
         await prisma.flightInstance.upsert({
           where: {
             flightId_travelDate_departureTime: {
@@ -56,7 +56,13 @@ export class FlightService {
               departureTime: schedule.departureTime,
             },
           },
-          update: {},
+          update: {
+            scheduleId: schedule.id,
+            arrivalTime: schedule.arrivalTime,
+            adultFare: schedule.adultFare,
+            childFare: schedule.childFare,
+            status: schedule.isOperating && flight.isActive ? 'SCHEDULED' : 'CANCELLED',
+          },
           create: {
             flightId: flight.id,
             scheduleId: schedule.id,
@@ -66,6 +72,7 @@ export class FlightService {
             adultFare: schedule.adultFare,
             childFare: schedule.childFare,
             availableSeats: flight.capacity,
+            status: schedule.isOperating && flight.isActive ? 'SCHEDULED' : 'CANCELLED',
           },
         });
       }
@@ -75,6 +82,7 @@ export class FlightService {
     const instances = await prisma.flightInstance.findMany({
       where: {
         travelDate: parsedDate,
+        status: 'SCHEDULED',
         flight: {
           isActive: true,
           origin: {
@@ -102,7 +110,12 @@ export class FlightService {
     return instances.map((inst) => {
       const adultFareNum = inst.adultFare.toNumber();
       const childFareNum = inst.childFare.toNumber();
-      const totalFare = adultFareNum * adults + childFareNum * children;
+      const adultSubtotal = adultFareNum * adults;
+      const childSubtotal = childFareNum * children;
+      const baseFare = adultSubtotal + childSubtotal;
+      const taxesAndFees = 350 * totalPassengers;
+      const totalFare = baseFare;
+      const grandTotal = baseFare + taxesAndFees;
 
       // Calculate approximate duration
       const [depH, depM] = inst.departureTime.split(':').map(Number);
@@ -117,6 +130,7 @@ export class FlightService {
         id: inst.id,
         flightId: inst.flightId,
         flightCode: inst.flight.flightCode,
+        airlineName: inst.flight.airlineName,
         origin: inst.flight.origin,
         destination: inst.flight.destination,
         capacity: inst.flight.capacity,
@@ -125,9 +139,15 @@ export class FlightService {
         arrivalTime: inst.arrivalTime,
         adultFare: adultFareNum,
         childFare: childFareNum,
+        adultSubtotal,
+        childSubtotal,
+        baseFare,
+        taxesAndFees,
         totalFare,
+        grandTotal,
         availableSeats: inst.availableSeats,
         duration: durationStr,
+        status: inst.status,
       };
     });
   }
@@ -272,7 +292,7 @@ export class FlightService {
       isOperating: true,
     }));
 
-    return prisma.flight.create({
+    const flight = await prisma.flight.create({
       data: {
         flightCode: data.flightCode.trim().toUpperCase(),
         origin: data.origin.trim(),
@@ -296,10 +316,48 @@ export class FlightService {
         },
       },
     });
+
+    // Populate upcoming flight instances for the next 90 days immediately
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const instancesToCreate = [];
+
+      for (let dayOffset = 0; dayOffset <= 90; dayOffset++) {
+        const cur = new Date(today);
+        cur.setDate(cur.getDate() + dayOffset);
+        const dayOfWeek = cur.getDay();
+        const sched = flight.schedules.find((s) => s.dayOfWeek === dayOfWeek && s.isOperating);
+        if (sched) {
+          instancesToCreate.push({
+            flightId: flight.id,
+            scheduleId: sched.id,
+            travelDate: cur,
+            departureTime: sched.departureTime,
+            arrivalTime: sched.arrivalTime,
+            adultFare: sched.adultFare,
+            childFare: sched.childFare,
+            availableSeats: flight.capacity,
+            status: flight.isActive ? 'SCHEDULED' : 'CANCELLED',
+          });
+        }
+      }
+
+      if (instancesToCreate.length > 0) {
+        await prisma.flightInstance.createMany({
+          data: instancesToCreate,
+          skipDuplicates: true,
+        });
+      }
+    } catch (e) {
+      console.warn('Initial flight instances generation warning:', e);
+    }
+
+    return flight;
   }
 
   /**
-   * Update existing flight
+   * Update existing flight and propagate fare, schedule, and capacity changes to all future instances
    */
   static async updateFlight(
     id: string,
@@ -346,7 +404,10 @@ export class FlightService {
     }
 
     return prisma.$transaction(async (tx) => {
-      // Update flight base details
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 1. Update flight base details
       const updated = await tx.flight.update({
         where: { id },
         data: {
@@ -357,10 +418,39 @@ export class FlightService {
         },
       });
 
-      // Update weekly schedules if provided
+      // 2. Adjust capacity differences on future departures
+      if (data.capacity && data.capacity !== flight.capacity) {
+        const capacityDiff = data.capacity - flight.capacity;
+        await tx.flightInstance.updateMany({
+          where: {
+            flightId: id,
+            travelDate: { gte: today },
+          },
+          data: {
+            availableSeats: {
+              increment: capacityDiff,
+            },
+          },
+        });
+      }
+
+      // 3. If deactivated, mark all upcoming instances as CANCELLED
+      if (data.isActive === false) {
+        await tx.flightInstance.updateMany({
+          where: {
+            flightId: id,
+            travelDate: { gte: today },
+          },
+          data: {
+            status: 'CANCELLED',
+          },
+        });
+      }
+
+      // 4. Update weekly schedules and synchronize all future flight departure instances
       if (data.schedules && data.schedules.length > 0) {
         for (const s of data.schedules) {
-          await tx.flightSchedule.upsert({
+          const scheduleRecord = await tx.flightSchedule.upsert({
             where: {
               flightId_dayOfWeek: {
                 flightId: id,
@@ -384,6 +474,43 @@ export class FlightService {
               isOperating: s.isOperating,
             },
           });
+
+          // Fetch all future instances for this flight to synchronize
+          const upcomingMatchingInstances = await tx.flightInstance.findMany({
+            where: {
+              flightId: id,
+              travelDate: { gte: today },
+            },
+            select: { id: true, travelDate: true, scheduleId: true },
+          });
+
+          const idsToUpdate = upcomingMatchingInstances
+            .filter((inst) => {
+              const instDay = inst.travelDate.getDay();
+              return inst.scheduleId === scheduleRecord.id || instDay === s.dayOfWeek;
+            })
+            .map((inst) => inst.id);
+
+          if (idsToUpdate.length > 0) {
+            const targetStatus =
+              data.isActive === false || !s.isOperating
+                ? 'CANCELLED'
+                : 'SCHEDULED';
+
+            await tx.flightInstance.updateMany({
+              where: {
+                id: { in: idsToUpdate },
+              },
+              data: {
+                scheduleId: scheduleRecord.id,
+                departureTime: s.departureTime,
+                arrivalTime: s.arrivalTime,
+                adultFare: new Prisma.Decimal(s.adultFare),
+                childFare: new Prisma.Decimal(s.childFare),
+                status: targetStatus,
+              },
+            });
+          }
         }
       }
 
@@ -396,6 +523,93 @@ export class FlightService {
         },
       });
     });
+  }
+
+  /**
+   * Delete or safely deactivate a flight while preserving all booking records
+   */
+  static async deleteFlight(id: string) {
+    const flight = await prisma.flight.findUnique({
+      where: { id },
+      include: {
+        instances: {
+          include: {
+            _count: {
+              select: { bookings: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!flight) {
+      throw new NotFoundError('Flight not found');
+    }
+
+    const totalBookings = flight.instances.reduce((acc, inst) => acc + inst._count.bookings, 0);
+
+    if (totalBookings > 0) {
+      // Historical bookings exist: soft-delete/deactivate to safeguard booking integrity
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.flight.update({
+          where: { id },
+          data: {
+            isActive: false,
+            status: 'CANCELLED',
+          },
+        });
+
+        await tx.flightInstance.updateMany({
+          where: {
+            flightId: id,
+            travelDate: { gte: today },
+          },
+          data: {
+            status: 'CANCELLED',
+            availableSeats: 0,
+          },
+        });
+
+        await tx.flightSchedule.updateMany({
+          where: { flightId: id },
+          data: { isOperating: false },
+        });
+      });
+
+      return {
+        success: true,
+        softDeleted: true,
+        message: `Flight ${flight.flightCode} has ${totalBookings} existing booking record(s). It has been deactivated and cancelled for future dates to preserve historical booking data.`,
+      };
+    } else {
+      // Zero bookings: safe to completely remove
+      await prisma.$transaction(async (tx) => {
+        const instanceIds = flight.instances.map((i) => i.id);
+        if (instanceIds.length > 0) {
+          await tx.flightSeat.deleteMany({
+            where: { flightInstanceId: { in: instanceIds } },
+          });
+          await tx.flightInstance.deleteMany({
+            where: { flightId: id },
+          });
+        }
+        await tx.flightSchedule.deleteMany({
+          where: { flightId: id },
+        });
+        await tx.flight.delete({
+          where: { id },
+        });
+      });
+
+      return {
+        success: true,
+        softDeleted: false,
+        message: `Flight ${flight.flightCode} and its associated schedules were deleted successfully.`,
+      };
+    }
   }
 
   /**

@@ -1144,33 +1144,55 @@ export const BookingReviewPage: React.FC = () => {
 
               <div className="space-y-2.5 text-xs text-slate-600">
                 {/* Outbound Leg Subtotal */}
-                <div>
-                  <div className="flex justify-between py-1 font-semibold text-slate-800">
-                    <span>
-                      {isRoundTrip ? 'Outbound Airfare' : `Base Fare (${adultCount} Ad${childCount > 0 ? `, ${childCount} Ch` : ''})`}
-                    </span>
+                <div className="space-y-1.5 pb-2">
+                  <div className="flex justify-between text-xs font-semibold text-slate-800">
+                    <span>{isRoundTrip ? 'Outbound Leg' : 'Base Fare'}</span>
                     <span className="font-bold text-slate-900">
                       ₹{((preview?.breakdown.baseTotal || flight.adultFare * adultCount + flight.childFare * childCount)).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="flex justify-between py-0.5 text-slate-400 text-[11px]">
-                    <span>Taxes & Airport Development Fee</span>
-                    <span>₹{(preview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                  <div className="pl-2 space-y-1 text-[11px] text-slate-500 border-l-2 border-slate-200">
+                    <div className="flex justify-between">
+                      <span>Adult ({adultCount} × ₹{(preview?.breakdown.baseAdultFare || flight.adultFare).toLocaleString('en-IN')})</span>
+                      <span className="font-semibold text-slate-700">₹{(preview?.breakdown.adultSubtotal || flight.adultFare * adultCount).toLocaleString('en-IN')}</span>
+                    </div>
+                    {childCount > 0 && (
+                      <div className="flex justify-between text-blue-700 font-medium">
+                        <span>Child ({childCount} × ₹{(preview?.breakdown.baseChildFare || flight.childFare).toLocaleString('en-IN')})</span>
+                        <span className="font-semibold">₹{(preview?.breakdown.childSubtotal || flight.childFare * childCount).toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-slate-400">
+                      <span>Taxes & Airport Development Fee</span>
+                      <span>₹{(preview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Return Leg Subtotal (if round trip) */}
                 {isRoundTrip && returnFlight && (
-                  <div className="pt-2 border-t border-slate-100">
-                    <div className="flex justify-between py-1 font-semibold text-indigo-900">
-                      <span>Return Airfare</span>
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5 pb-2">
+                    <div className="flex justify-between text-xs font-semibold text-indigo-900">
+                      <span>Return Leg</span>
                       <span className="font-bold text-slate-900">
                         ₹{((returnPreview?.breakdown.baseTotal || returnFlight.adultFare * adultCount + returnFlight.childFare * childCount)).toLocaleString('en-IN')}
                       </span>
                     </div>
-                    <div className="flex justify-between py-0.5 text-slate-400 text-[11px]">
-                      <span>Taxes & Airport Development Fee</span>
-                      <span>₹{(returnPreview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                    <div className="pl-2 space-y-1 text-[11px] text-slate-500 border-l-2 border-indigo-200">
+                      <div className="flex justify-between">
+                        <span>Adult ({adultCount} × ₹{(returnPreview?.breakdown.baseAdultFare || returnFlight.adultFare).toLocaleString('en-IN')})</span>
+                        <span className="font-semibold text-slate-700">₹{(returnPreview?.breakdown.adultSubtotal || returnFlight.adultFare * adultCount).toLocaleString('en-IN')}</span>
+                      </div>
+                      {childCount > 0 && (
+                        <div className="flex justify-between text-indigo-700 font-medium">
+                          <span>Child ({childCount} × ₹{(returnPreview?.breakdown.baseChildFare || returnFlight.childFare).toLocaleString('en-IN')})</span>
+                          <span className="font-semibold">₹{(returnPreview?.breakdown.childSubtotal || returnFlight.childFare * childCount).toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-400">
+                        <span>Taxes & Airport Development Fee</span>
+                        <span>₹{(returnPreview?.breakdown.taxesAndFees || 350 * (adultCount + childCount)).toLocaleString('en-IN')}</span>
+                      </div>
                     </div>
                   </div>
                 )}

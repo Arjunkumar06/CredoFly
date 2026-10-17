@@ -1198,6 +1198,265 @@ describe('CredoFly API Test Suite', () => {
     });
   });
 
+  describe('13. Complete Admin CRUD, Live Fare Synchronization, Booking Snapshots & Soft Deletion', () => {
+    const syncFlightCode = `CFSYNC${Math.floor(100 + Math.random() * 899)}`;
+    let syncFlightId: string;
+    let syncInstanceId: string;
+    let syncBookingId: string;
+    let testDateStr: string;
+
+    beforeAll(() => {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + 5);
+      testDateStr = targetDate.toISOString().slice(0, 10);
+    });
+
+    it('should allow admin to create a new flight and immediately find it in customer flight search', async () => {
+      const createRes = await request(app)
+        .post('/api/admin/flights')
+        .set('Authorization', adminAuthHeader)
+        .send({
+          flightCode: syncFlightCode,
+          origin: 'Delhi (DEL)',
+          destination: 'Chennai (MAA)',
+          capacity: 150,
+          isActive: true,
+          schedules: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+            dayOfWeek: day,
+            departureTime: '09:00',
+            arrivalTime: '11:45',
+            adultFare: 5500,
+            childFare: 3200,
+            isOperating: true,
+          })),
+        });
+
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.flight.flightCode).toBe(syncFlightCode);
+      syncFlightId = createRes.body.flight.id;
+
+      // Customer searches for Delhi to Chennai on test date
+      const searchRes = await request(app).get('/api/flights/search').query({
+        origin: 'Delhi (DEL)',
+        destination: 'Chennai (MAA)',
+        travelDate: testDateStr,
+        adults: 2,
+        children: 1,
+      });
+
+      expect(searchRes.status).toBe(200);
+      const found = searchRes.body.flights.find((f: any) => f.flightCode === syncFlightCode);
+      expect(found).toBeDefined();
+      expect(found.adultFare).toBe(5500);
+      expect(found.childFare).toBe(3200);
+      expect(found.adultSubtotal).toBe(11000); // 2 * 5500
+      expect(found.childSubtotal).toBe(3200);  // 1 * 3200
+      syncInstanceId = found.id;
+    });
+
+    it('should propagate updated adult and child fares from admin edit to subsequent customer searches', async () => {
+      // Admin updates adultFare to 6200 and childFare to 3800
+      const updateRes = await request(app)
+        .patch(`/api/admin/flights/${syncFlightId}`)
+        .set('Authorization', adminAuthHeader)
+        .send({
+          schedules: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+            dayOfWeek: day,
+            departureTime: '09:00',
+            arrivalTime: '11:45',
+            adultFare: 6200,
+            childFare: 3800,
+            isOperating: true,
+          })),
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.success).toBe(true);
+
+      // Customer searches again on the same date: must immediately receive 6200 and 3800
+      const searchRes = await request(app).get('/api/flights/search').query({
+        origin: 'Delhi (DEL)',
+        destination: 'Chennai (MAA)',
+        travelDate: testDateStr,
+        adults: 2,
+        children: 1,
+      });
+
+      expect(searchRes.status).toBe(200);
+      const found = searchRes.body.flights.find((f: any) => f.flightCode === syncFlightCode);
+      expect(found).toBeDefined();
+      expect(found.adultFare).toBe(6200);
+      expect(found.childFare).toBe(3800);
+      expect(found.adultSubtotal).toBe(12400); // 2 * 6200
+      expect(found.childSubtotal).toBe(3800);  // 1 * 3800
+    });
+
+    it('should accurately calculate adult and child subtotals in preview and booking creation', async () => {
+      // Check fare preview endpoint
+      const previewRes = await request(app).post('/api/bookings/preview').send({
+        flightInstanceId: syncInstanceId,
+        adultCount: 2,
+        childCount: 1,
+        cabinClass: 'ECONOMY',
+      });
+
+      expect(previewRes.status).toBe(200);
+      expect(previewRes.body.breakdown.baseAdultFare).toBe(6200);
+      expect(previewRes.body.breakdown.baseChildFare).toBe(3800);
+      expect(previewRes.body.breakdown.adultSubtotal).toBe(12400);
+      expect(previewRes.body.breakdown.childSubtotal).toBe(3800);
+      expect(previewRes.body.breakdown.baseTotal).toBe(16200);
+      expect(previewRes.body.breakdown.taxesAndFees).toBe(1050); // 3 * 350
+
+      // Create booking
+      const bookRes = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId: syncInstanceId,
+          adultCount: 2,
+          childCount: 1,
+          passengers: [
+            { name: 'Parent One', type: 'ADULT' },
+            { name: 'Parent Two', type: 'ADULT' },
+            { name: 'Child One', type: 'CHILD' },
+          ],
+        });
+
+      expect(bookRes.status).toBe(201);
+      expect(bookRes.body.success).toBe(true);
+      expect(Number(bookRes.body.booking.adultFareSnapshot)).toBe(6200);
+      expect(Number(bookRes.body.booking.childFareSnapshot)).toBe(3800);
+      syncBookingId = bookRes.body.booking.id;
+    });
+
+    it('should retain historical booking fare snapshots when admin later changes flight fares', async () => {
+      // Admin increases fares again: adult 7500, child 4500
+      const updateRes = await request(app)
+        .patch(`/api/admin/flights/${syncFlightId}`)
+        .set('Authorization', adminAuthHeader)
+        .send({
+          schedules: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+            dayOfWeek: day,
+            departureTime: '09:00',
+            arrivalTime: '11:45',
+            adultFare: 7500,
+            childFare: 4500,
+            isOperating: true,
+          })),
+        });
+
+      expect(updateRes.status).toBe(200);
+
+      // Verify historical booking retains previous fare snapshot
+      const pastBooking = await prisma.booking.findUnique({
+        where: { id: syncBookingId },
+      });
+      expect(Number(pastBooking?.adultFareSnapshot)).toBe(6200);
+      expect(Number(pastBooking?.childFareSnapshot)).toBe(3800);
+
+      // New search shows updated fares
+      const searchRes = await request(app).get('/api/flights/search').query({
+        origin: 'Delhi (DEL)',
+        destination: 'Chennai (MAA)',
+        travelDate: testDateStr,
+        adults: 1,
+        children: 0,
+      });
+
+      const found = searchRes.body.flights.find((f: any) => f.flightCode === syncFlightCode);
+      expect(found).toBeDefined();
+      expect(found.adultFare).toBe(7500);
+      expect(found.childFare).toBe(4500);
+    });
+
+    it('should reject direct booking of deactivated or cancelled flights', async () => {
+      // Admin deactivates flight
+      const deactivateRes = await request(app)
+        .patch(`/api/admin/flights/${syncFlightId}`)
+        .set('Authorization', adminAuthHeader)
+        .send({
+          isActive: false,
+        });
+
+      expect(deactivateRes.status).toBe(200);
+
+      // Customer search no longer returns it
+      const searchRes = await request(app).get('/api/flights/search').query({
+        origin: 'Delhi (DEL)',
+        destination: 'Chennai (MAA)',
+        travelDate: testDateStr,
+        adults: 1,
+        children: 0,
+      });
+      const found = searchRes.body.flights.find((f: any) => f.flightCode === syncFlightCode);
+      expect(found).toBeUndefined();
+
+      // Direct booking attempt on inactive instance must be rejected
+      const bookAttempt = await request(app)
+        .post('/api/bookings')
+        .set('Authorization', `Bearer ${customerToken}`)
+        .send({
+          flightInstanceId: syncInstanceId,
+          adultCount: 1,
+          childCount: 0,
+          passengers: [{ name: 'Attempt Flyer', type: 'ADULT' }],
+        });
+
+      expect(bookAttempt.status).toBe(400);
+      expect(bookAttempt.body.error).toContain('inactive or cancelled');
+    });
+
+    it('should safely soft-delete a flight that has bookings by deactivating it', async () => {
+      const deleteRes = await request(app)
+        .delete(`/api/admin/flights/${syncFlightId}`)
+        .set('Authorization', adminAuthHeader);
+
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body.success).toBe(true);
+      expect(deleteRes.body.softDeleted).toBe(true);
+
+      // Historical booking still safely exists
+      const historicalBooking = await prisma.booking.findUnique({
+        where: { id: syncBookingId },
+      });
+      expect(historicalBooking).toBeDefined();
+      expect(historicalBooking?.status).toBe('CONFIRMED');
+    });
+
+    it('should permanently delete a flight with 0 bookings', async () => {
+      // Create empty temp flight
+      const tempFlightCode = `CFTEMP${Math.floor(100 + Math.random() * 899)}`;
+      const createRes = await request(app)
+        .post('/api/admin/flights')
+        .set('Authorization', adminAuthHeader)
+        .send({
+          flightCode: tempFlightCode,
+          origin: 'Kolkata (CCU)',
+          destination: 'Hyderabad (HYD)',
+          capacity: 100,
+          isActive: true,
+        });
+
+      expect(createRes.status).toBe(201);
+      const tempFlightId = createRes.body.flight.id;
+
+      // Delete empty flight
+      const deleteRes = await request(app)
+        .delete(`/api/admin/flights/${tempFlightId}`)
+        .set('Authorization', adminAuthHeader);
+
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body.success).toBe(true);
+      expect(deleteRes.body.softDeleted).toBe(false);
+
+      const inDb = await prisma.flight.findUnique({
+        where: { id: tempFlightId },
+      });
+      expect(inDb).toBeNull();
+    });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });

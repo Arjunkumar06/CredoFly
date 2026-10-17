@@ -1,6 +1,6 @@
 import { prisma } from '../db.js';
 import { TAX_PER_PASSENGER_PER_LEG } from '../utils/constants.js';
-import { NotFoundError } from '../utils/errors.js';
+import { NotFoundError, BadRequestError } from '../utils/errors.js';
 
 export interface PricingAdjustment {
   baseMultiplier: number;
@@ -156,6 +156,10 @@ export class PricingService {
 
     if (!instance) {
       throw new NotFoundError('Flight departure not found');
+    }
+
+    if (!instance.flight.isActive || instance.status === 'CANCELLED' || instance.status === 'INACTIVE') {
+      throw new BadRequestError('This flight is currently inactive or cancelled and cannot be booked.');
     }
 
     const pricing = await PricingService.calculateDynamicMultiplier({

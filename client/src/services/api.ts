@@ -130,6 +130,7 @@ export const adminApi = {
   getFlights: () => api.get('/admin/flights'),
   createFlight: (data: any) => api.post('/admin/flights', data),
   updateFlight: (id: string, data: any) => api.patch(`/admin/flights/${id}`, data),
+  deleteFlight: (id: string) => api.delete(`/admin/flights/${id}`),
   getBookings: (params?: {
     route?: string;
     travelDate?: string;

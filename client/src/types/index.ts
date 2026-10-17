@@ -38,6 +38,7 @@ export interface SearchFlightResult {
   id: string; // flightInstanceId
   flightId: string;
   flightCode: string;
+  airlineName?: string;
   origin: string;
   destination: string;
   capacity: number;
@@ -46,9 +47,15 @@ export interface SearchFlightResult {
   arrivalTime: string;
   adultFare: number;
   childFare: number;
+  adultSubtotal?: number;
+  childSubtotal?: number;
+  baseFare?: number;
+  taxesAndFees?: number;
   totalFare: number;
+  grandTotal?: number;
   availableSeats: number;
   duration: string;
+  status?: string;
 }
 
 export interface Passenger {

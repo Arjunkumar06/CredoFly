@@ -70,6 +70,21 @@ export const searchFlightsSchema = z.object({
   path: ['returnDate'],
 });
 
+export const scheduleItemSchema = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  departureTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be in HH:mm format'),
+  arrivalTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be in HH:mm format'),
+  adultFare: z.coerce.number().positive('Adult fare must be positive'),
+  childFare: z.coerce.number().positive('Child fare must be positive'),
+  effectiveStartDate: z.string().optional().nullable(),
+  effectiveEndDate: z.string().optional().nullable(),
+  isOperating: z.boolean().default(true),
+});
+
+export const updateSchedulesSchema = z.object({
+  schedules: z.array(scheduleItemSchema).min(1),
+});
+
 export const createFlightSchema = z.object({
   flightCode: z.string().min(2).max(10).toUpperCase(),
   airlineName: z.string().default('CredoFly Express'),
@@ -80,7 +95,7 @@ export const createFlightSchema = z.object({
   timeZone: z.string().default('Asia/Kolkata'),
   durationMinutes: z.coerce.number().int().positive().default(170),
   isActive: z.boolean().default(true),
-  schedules: z.array(z.any()).optional(),
+  schedules: z.array(scheduleItemSchema).optional(),
 }).refine((data) => data.origin.trim().toLowerCase() !== data.destination.trim().toLowerCase(), {
   message: 'Origin and destination must be different',
   path: ['destination'],
@@ -95,22 +110,7 @@ export const updateFlightSchema = z.object({
   timeZone: z.string().optional(),
   durationMinutes: z.coerce.number().int().positive().optional(),
   isActive: z.boolean().optional(),
-  schedules: z.array(z.any()).optional(),
-});
-
-export const scheduleItemSchema = z.object({
-  dayOfWeek: z.number().int().min(0).max(6),
-  departureTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be in HH:mm format'),
-  arrivalTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be in HH:mm format'),
-  adultFare: z.coerce.number().positive('Adult fare must be positive'),
-  childFare: z.coerce.number().positive('Child fare must be positive'),
-  effectiveStartDate: z.string().optional().nullable(),
-  effectiveEndDate: z.string().optional().nullable(),
-  isOperating: z.boolean().default(true),
-});
-
-export const updateSchedulesSchema = z.object({
-  schedules: z.array(scheduleItemSchema).min(1),
+  schedules: z.array(scheduleItemSchema).optional(),
 });
 
 export const passengerInputSchema = z.object({
@@ -130,6 +130,9 @@ export const bookingPreviewSchema = z.object({
   selectedSeats: z.array(z.string()).optional(),
 }).refine((data) => data.adultCount + data.childCount >= 1, {
   message: 'At least one passenger must be selected',
+}).refine((data) => data.adultCount >= 1, {
+  message: 'At least one adult passenger is required for flight reservations',
+  path: ['adultCount'],
 });
 
 export const createBookingSchema = z.object({
@@ -145,6 +148,9 @@ export const createBookingSchema = z.object({
   returnPassengers: z.array(passengerInputSchema).optional(),
 }).refine((data) => data.adultCount + data.childCount >= 1, {
   message: 'At least one passenger must be selected',
+}).refine((data) => data.adultCount >= 1, {
+  message: 'At least one adult passenger is required for flight reservations',
+  path: ['adultCount'],
 }).refine((data) => data.passengers.length === data.adultCount + data.childCount, {
   message: 'Passenger list count must match total adult and child count',
 }).refine((data) => !data.returnPassengers || data.returnPassengers.length === data.adultCount + data.childCount, {

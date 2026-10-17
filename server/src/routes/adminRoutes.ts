@@ -12,6 +12,7 @@ router.get('/dashboard', AdminController.getDashboard);
 router.get('/flights', AdminController.getFlights);
 router.post('/flights', AdminController.createFlight);
 router.patch('/flights/:id', AdminController.updateFlight);
+router.delete('/flights/:id', AdminController.deleteFlight);
 router.get('/bookings', AdminController.getBookings);
 router.get('/bookings/:id', AdminController.getBookingDetails);
 router.post('/bookings/:id/cancel', AdminController.cancelBooking);

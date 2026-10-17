@@ -124,6 +124,27 @@ export class AdminController {
     }
   }
 
+  static async deleteFlight(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const result = await FlightService.deleteFlight(id);
+
+      await prisma.auditLog.create({
+        data: {
+          action: result.softDeleted ? 'FLIGHT_DEACTIVATED' : 'FLIGHT_DELETED',
+          entity: 'Flight',
+          entityId: id,
+          actor: 'admin',
+          details: result.message,
+        },
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getBookings(req: Request, res: Response, next: NextFunction) {
     try {
       const { route, travelDate, departureTime, page, limit } = req.query;

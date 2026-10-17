@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plane, Plus, Edit, Check, X, AlertCircle, Save, Calendar } from 'lucide-react';
+import { Plane, Plus, Edit, Check, X, AlertCircle, Save, Calendar, Trash2 } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import { Flight } from '../../types';
 
@@ -32,6 +32,29 @@ export const AdminFlightsPage: React.FC = () => {
   const [schedules, setSchedules] = useState<ScheduleFormRow[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSchedules, setIsGeneratingSchedules] = useState(false);
+
+  // Delete / Deactivate modal state
+  const [flightToDelete, setFlightToDelete] = useState<Flight | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDeleteFlight = async () => {
+    if (!flightToDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await adminApi.deleteFlight(flightToDelete.id);
+      if (res.data.success) {
+        setSuccessMsg(res.data.message);
+        setFlightToDelete(null);
+        loadFlights();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to delete flight.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleGenerateSchedules = async () => {
     setIsGeneratingSchedules(true);
@@ -300,7 +323,7 @@ export const AdminFlightsPage: React.FC = () => {
             </div>
 
           <form onSubmit={handleSaveFlight} className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
                   Flight Code
@@ -357,6 +380,20 @@ export const AdminFlightsPage: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
                 />
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">
+                  Status
+                </label>
+                <select
+                  value={isActive ? 'ACTIVE' : 'INACTIVE'}
+                  onChange={(e) => setIsActive(e.target.value === 'ACTIVE')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold bg-white"
+                >
+                  <option value="ACTIVE">Active (Live)</option>
+                  <option value="INACTIVE">Inactive (Disabled)</option>
+                </select>
+              </div>
             </div>
 
             {/* Weekly Schedule Table (Monday through Sunday) */}
@@ -367,7 +404,7 @@ export const AdminFlightsPage: React.FC = () => {
               </div>
 
               <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-left text-xs">
+                <table className="w-full min-w-[550px] text-left text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
                     <tr>
                       <th className="py-2.5 px-3">Day</th>
@@ -406,6 +443,7 @@ export const AdminFlightsPage: React.FC = () => {
                           <input
                             type="number"
                             required
+                            min={1}
                             disabled={!row.isOperating}
                             value={row.adultFare}
                             onChange={(e) => handleScheduleChange(idx, 'adultFare', Number(e.target.value))}
@@ -416,6 +454,7 @@ export const AdminFlightsPage: React.FC = () => {
                           <input
                             type="number"
                             required
+                            min={1}
                             disabled={!row.isOperating}
                             value={row.childFare}
                             onChange={(e) => handleScheduleChange(idx, 'childFare', Number(e.target.value))}
@@ -459,13 +498,106 @@ export const AdminFlightsPage: React.FC = () => {
       </div>
       )}
 
-      {/* Flights Table */}
+      {/* Delete / Deactivate Confirmation Modal */}
+      {flightToDelete && (
+        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 animate-scaleUp">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-navy-950">
+                Delete or Deactivate Flight {flightToDelete.flightCode}?
+              </h3>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                If this flight has existing booking records, it will be safely <strong>deactivated and cancelled for future dates</strong> to protect all passenger booking and payment history.
+                If it has zero bookings, it will be <strong>permanently deleted</strong>.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setFlightToDelete(null)}
+                className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDeleteFlight}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-1.5"
+              >
+                {isDeleting ? (
+                  <span>Processing...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete / Deactivate</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flights Table & Mobile Cards */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-800 text-sm">Configured Flights ({flights.length})</h3>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: Clean Cards for screen widths < 640px */}
+        <div className="block sm:hidden divide-y divide-slate-100">
+          {flights.map((f) => {
+            const activeDays = f.schedules?.filter((s) => s.isOperating).length || 0;
+            return (
+              <div key={f.id} className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-black text-navy-950 text-base">{f.flightCode}</span>
+                    {f.isActive ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-bold text-slate-600">{f.capacity} seats</span>
+                </div>
+                <div className="text-xs text-slate-700 font-medium">
+                  {f.origin} &rarr; {f.destination}
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+                  <span>{activeDays} / 7 days active</span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleEditFlight(f)}
+                      className="px-2.5 py-1.5 border border-slate-300 hover:border-blue-500 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-semibold transition"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setFlightToDelete(f)}
+                      className="p-1.5 border border-slate-200 hover:border-rose-400 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                      title="Delete or Deactivate Flight"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop & Tablet Table: screen widths >= 640px */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
               <tr>
@@ -506,12 +638,21 @@ export const AdminFlightsPage: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => handleEditFlight(f)}
-                        className="px-3 py-1.5 border border-slate-300 hover:border-blue-500 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-semibold transition"
-                      >
-                        Edit & Schedule
-                      </button>
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleEditFlight(f)}
+                          className="px-3 py-1.5 border border-slate-300 hover:border-blue-500 text-slate-700 hover:text-blue-600 rounded-lg text-xs font-semibold transition"
+                        >
+                          Edit & Schedule
+                        </button>
+                        <button
+                          onClick={() => setFlightToDelete(f)}
+                          className="p-1.5 border border-slate-200 hover:border-rose-400 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                          title="Delete or Deactivate Flight"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

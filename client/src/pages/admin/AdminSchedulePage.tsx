@@ -662,132 +662,137 @@ export const AdminSchedulePage: React.FC = () => {
           })}
         </div>
 
-        {/* 7-Day Weekday Header */}
-        <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs uppercase tracking-wider text-slate-400 py-2 border-b border-slate-100">
-          <span>Sun</span>
-          <span>Mon</span>
-          <span>Tue</span>
-          <span>Wed</span>
-          <span>Thu</span>
-          <span>Fri</span>
-          <span>Sat</span>
-        </div>
+        {/* Responsive Calendar Wrapper for all screen widths */}
+        <div className="overflow-x-auto pb-2 -mx-2 px-2">
+          <div className="min-w-[560px]">
+            {/* 7-Day Weekday Header */}
+            <div className="grid grid-cols-7 gap-1 text-center font-bold text-xs uppercase tracking-wider text-slate-400 py-2 border-b border-slate-100">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
 
-        {/* Calendar Grid (Days & Badges) */}
-        {isLoadingOverview ? (
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {Array.from({ length: 35 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="min-h-[95px] sm:min-h-[115px] bg-slate-50/70 rounded-2xl animate-pulse border border-slate-100"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {/* Blank offset tiles for first week */}
-            {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
-              <div
-                key={`offset-${idx}`}
-                className="min-h-[95px] sm:min-h-[115px] bg-slate-50/40 rounded-2xl border border-dashed border-slate-100"
-              />
-            ))}
+            {/* Calendar Grid (Days & Badges) */}
+            {isLoadingOverview ? (
+              <div className="grid grid-cols-7 gap-1.5 sm:gap-2 pt-2">
+                {Array.from({ length: 35 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="min-h-[95px] sm:min-h-[115px] bg-slate-50/70 rounded-2xl animate-pulse border border-slate-100"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-1.5 sm:gap-2 pt-2">
+                {/* Blank offset tiles for first week */}
+                {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+                  <div
+                    key={`offset-${idx}`}
+                    className="min-h-[95px] sm:min-h-[115px] bg-slate-50/40 rounded-2xl border border-dashed border-slate-100"
+                  />
+                ))}
 
-            {/* Actual Month Days */}
-            {Array.from({ length: totalDaysInMonth }).map((_, idx) => {
-              const dayNum = idx + 1;
-              const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-              const dayData: CalendarDayOverview | undefined = calendarOverview?.days?.[dateKey];
+                {/* Actual Month Days */}
+                {Array.from({ length: totalDaysInMonth }).map((_, idx) => {
+                  const dayNum = idx + 1;
+                  const dateKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                  const dayData: CalendarDayOverview | undefined = calendarOverview?.days?.[dateKey];
 
-              const isToday = dateKey === todayStr;
-              const isSelected = dateKey === selectedDateStr;
+                  const isToday = dateKey === todayStr;
+                  const isSelected = dateKey === selectedDateStr;
 
-              return (
-                <div
-                  key={dateKey}
-                  onClick={() => handleDateClick(dateKey)}
-                  className={`min-h-[100px] sm:min-h-[118px] rounded-2xl p-2 border transition cursor-pointer flex flex-col justify-between select-none ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/30 shadow-md scale-[1.01]'
-                      : isToday
-                      ? 'border-blue-400 bg-blue-50/20 hover:border-blue-500 hover:shadow-xs'
-                      : 'border-slate-200 bg-white hover:border-blue-400 hover:shadow-xs'
-                  }`}
-                >
-                  {/* Top Bar: Date number + Flight Count Badge */}
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-xs font-black ${
-                        isToday
-                          ? 'w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center'
-                          : isSelected
-                          ? 'text-blue-700'
-                          : 'text-slate-800'
+                  return (
+                    <div
+                      key={dateKey}
+                      onClick={() => handleDateClick(dateKey)}
+                      className={`min-h-[100px] sm:min-h-[118px] rounded-2xl p-2 border transition cursor-pointer flex flex-col justify-between select-none ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/30 shadow-md scale-[1.01]'
+                          : isToday
+                          ? 'border-blue-400 bg-blue-50/20 hover:border-blue-500 hover:shadow-xs'
+                          : 'border-slate-200 bg-white hover:border-blue-400 hover:shadow-xs'
                       }`}
                     >
-                      {dayNum}
-                    </span>
-
-                    {dayData && dayData.flightCount > 0 && (
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                        {dayData.flightCount} flt{dayData.flightCount > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Middle Indicators: Bookings & Status Flags */}
-                  <div className="space-y-1 my-1">
-                    {/* Booking badge */}
-                    {dayData && dayData.bookingCount > 0 && (
-                      <div className="flex items-center space-x-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">
-                        <Ticket className="w-2.5 h-2.5 flex-shrink-0" />
-                        <span>
-                          {dayData.bookingCount} bkgs ({dayData.passengerCount} pax)
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Status Flags: Cancellation, Delay, or Fully Booked */}
-                    <div className="flex flex-wrap gap-1">
-                      {dayData?.hasCancelledFlights && (
-                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-100 text-rose-800">
-                          Cancelled
-                        </span>
-                      )}
-                      {dayData?.hasDelayedFlights && (
-                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-100 text-amber-800">
-                          Delayed
-                        </span>
-                      )}
-                      {dayData?.isFullyBooked && (
-                        <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-slate-800 text-white">
-                          Full
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Flight Chips Preview */}
-                  <div className="space-y-0.5 overflow-hidden">
-                    {dayData?.flightsSample && dayData.flightsSample.length > 0 ? (
-                      dayData.flightsSample.slice(0, 2).map((f) => (
-                        <div
-                          key={f.id}
-                          className="text-[9px] font-semibold text-slate-600 truncate flex items-center justify-between"
+                      {/* Top Bar: Date number + Flight Count Badge */}
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`text-xs font-black ${
+                            isToday
+                              ? 'w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center'
+                              : isSelected
+                              ? 'text-blue-700'
+                              : 'text-slate-800'
+                          }`}
                         >
-                          <span className="truncate">{f.flightCode}</span>
-                          <span className="font-mono text-[8px] text-slate-400 ml-1">{f.departureTime}</span>
+                          {dayNum}
+                        </span>
+
+                        {dayData && dayData.flightCount > 0 && (
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                            {dayData.flightCount} flt{dayData.flightCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Middle Indicators: Bookings & Status Flags */}
+                      <div className="space-y-1 my-1">
+                        {/* Booking badge */}
+                        {dayData && dayData.bookingCount > 0 && (
+                          <div className="flex items-center space-x-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">
+                            <Ticket className="w-2.5 h-2.5 flex-shrink-0" />
+                            <span>
+                              {dayData.bookingCount} bkgs ({dayData.passengerCount} pax)
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Status Flags: Cancellation, Delay, or Fully Booked */}
+                        <div className="flex flex-wrap gap-1">
+                          {dayData?.hasCancelledFlights && (
+                            <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-100 text-rose-800">
+                              Cancelled
+                            </span>
+                          )}
+                          {dayData?.hasDelayedFlights && (
+                            <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-100 text-amber-800">
+                              Delayed
+                            </span>
+                          )}
+                          {dayData?.isFullyBooked && (
+                            <span className="px-1 py-0.5 rounded text-[8px] font-extrabold uppercase bg-slate-800 text-white">
+                              Full
+                            </span>
+                          )}
                         </div>
-                      ))
-                    ) : (
-                      <span className="text-[9px] text-slate-300 italic">No flights</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                      </div>
+
+                      {/* Flight Chips Preview */}
+                      <div className="space-y-0.5 overflow-hidden">
+                        {dayData?.flightsSample && dayData.flightsSample.length > 0 ? (
+                          dayData.flightsSample.slice(0, 2).map((f) => (
+                            <div
+                              key={f.id}
+                              className="text-[9px] font-semibold text-slate-600 truncate flex items-center justify-between"
+                            >
+                              <span className="truncate">{f.flightCode}</span>
+                              <span className="font-mono text-[8px] text-slate-400 ml-1">{f.departureTime}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="text-[9px] text-slate-300 italic">No flights</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Date Details Drawer / Panel */}

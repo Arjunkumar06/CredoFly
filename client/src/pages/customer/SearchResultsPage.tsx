@@ -711,52 +711,74 @@ export const SearchResultsPage: React.FC = () => {
                     </div>
 
                     {/* Departure, Diagram & Arrival */}
-                    <div className="flex-1 flex items-center justify-center space-x-6 sm:space-x-10 w-full">
+                    {/* Departure, Diagram & Arrival */}
+                    <div className="flex-1 flex items-center justify-center space-x-3 sm:space-x-8 w-full">
                       {/* Departure */}
-                      <div className="text-center sm:text-left">
-                        <p className="text-2xl font-black text-slate-900 tracking-tight">
+                      <div className="text-center sm:text-left min-w-[70px]">
+                        <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                           {flight.departureTime}
                         </p>
-                        <p className="text-xs font-bold text-slate-600 uppercase mt-0.5">
+                        <p className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase mt-0.5">
                           {flight.origin.match(/\(([^)]+)\)/)?.[1] || flight.origin}
                         </p>
                       </div>
 
                       {/* Flight Duration graphic */}
-                      <div className="flex flex-col items-center px-2">
-                        <span className="text-[11px] font-semibold text-slate-500 mb-1">
+                      <div className="flex flex-col items-center px-1 sm:px-2 flex-shrink-0">
+                        <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 mb-1">
                           {flight.duration}
                         </span>
-                        <div className="w-24 sm:w-36 flex items-center">
-                          <div className="w-2 h-2 rounded-full border border-blue-600 bg-white"></div>
+                        <div className="w-16 sm:w-32 md:w-36 flex items-center">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full border border-blue-600 bg-white"></div>
                           <div className="flex-1 border-t-2 border-dashed border-slate-300"></div>
-                          <Plane className="w-3.5 h-3.5 text-blue-600 transform rotate-90 mx-1" />
+                          <Plane className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-600 transform rotate-90 mx-1" />
                           <div className="flex-1 border-t-2 border-dashed border-slate-300"></div>
-                          <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-600"></div>
                         </div>
-                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full mt-1 border border-emerald-200">
+                        <span className="text-[9px] sm:text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full mt-1 border border-emerald-200">
                           Direct Non-stop
                         </span>
                       </div>
 
                       {/* Arrival */}
-                      <div className="text-center sm:text-right">
-                        <p className="text-2xl font-black text-slate-900 tracking-tight">
+                      <div className="text-center sm:text-right min-w-[70px]">
+                        <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                           {flight.arrivalTime}
                         </p>
-                        <p className="text-xs font-bold text-slate-600 uppercase mt-0.5">
+                        <p className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase mt-0.5">
                           {flight.destination.match(/\(([^)]+)\)/)?.[1] || flight.destination}
                         </p>
                       </div>
                     </div>
 
                     {/* Pricing & Selection */}
-                    <div className="w-full md:w-56 flex md:flex-col items-center md:items-end justify-between border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 gap-3">
-                      <div className="text-left md:text-right">
-                        <div className="text-xl sm:text-2xl font-black text-slate-900">
-                          ₹{flight.adultFare.toLocaleString('en-IN')}
+                    <div className="w-full md:w-64 flex md:flex-col items-center md:items-end justify-between border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 gap-2">
+                      <div className="text-left md:text-right space-y-1">
+                        <div className="flex flex-col md:items-end">
+                          <div className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                            ₹{(flight.grandTotal || (flight.totalFare + 350 * (adults + children))).toLocaleString('en-IN')}
+                          </div>
+                          <p className="text-[11px] font-medium text-slate-500">
+                            Total for {adults} Adult{adults > 1 ? 's' : ''}{children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''}
+                          </p>
                         </div>
-                        <p className="text-[11px] text-slate-500">per adult</p>
+
+                        {/* Itemized adult & child fare badges */}
+                        <div className="flex flex-wrap items-center gap-1.5 md:justify-end text-[11px] pt-0.5">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                            Adult: ₹{flight.adultFare.toLocaleString('en-IN')}
+                          </span>
+                          {children > 0 ? (
+                            <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                              Child: ₹{flight.childFare.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 hidden sm:inline">
+                              (Child: ₹{flight.childFare.toLocaleString('en-IN')})
+                            </span>
+                          )}
+                        </div>
+
                         <div className="mt-1">
                           <span
                             className={`text-xs font-bold ${
@@ -799,14 +821,45 @@ export const SearchResultsPage: React.FC = () => {
                       onClick={() => setExpandedFlightId(isExpanded ? null : flight.id)}
                       className="text-blue-600 hover:text-blue-700 font-bold text-xs inline-flex items-center space-x-1"
                     >
-                      <span>{isExpanded ? 'Hide Details' : 'Flight Details & Policies'}</span>
+                      <span>{isExpanded ? 'Hide Details' : 'Fare Breakdown & Policies'}</span>
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </button>
                   </div>
 
-                  {/* Expandable Policy / Details Drawer */}
+                  {/* Expandable Fare Breakdown & Policy Drawer */}
                   {isExpanded && (
-                    <div className="mt-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-3 animate-fadeIn">
+                    <div className="mt-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-4 animate-fadeIn">
+                      {/* Price Calculation Audit Box */}
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                        <p className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                          Authoritative Fare Calculation ({adults} Adult{adults > 1 ? 's' : ''}{children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''})
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-600">Adult Fare ({adults} × ₹{flight.adultFare.toLocaleString('en-IN')})</span>
+                            <span className="font-bold text-slate-900">₹{(flight.adultFare * adults).toLocaleString('en-IN')}</span>
+                          </div>
+                          {children > 0 && (
+                            <div className="flex justify-between py-1 border-b border-slate-100">
+                              <span className="text-slate-600">Child Fare ({children} × ₹{flight.childFare.toLocaleString('en-IN')})</span>
+                              <span className="font-bold text-blue-700">₹{(flight.childFare * children).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-600">Base Fare Subtotal</span>
+                            <span className="font-bold text-slate-900">₹{((flight.adultFare * adults) + (flight.childFare * children)).toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-600">Applicable Taxes & Fees</span>
+                            <span className="font-bold text-slate-900">₹{(350 * (adults + children)).toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between pt-1 font-bold text-slate-900 text-sm">
+                          <span>Total Payable for Flight Leg</span>
+                          <span className="text-blue-600">₹{((flight.adultFare * adults) + (flight.childFare * children) + 350 * (adults + children)).toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                           <p className="font-bold text-slate-800 uppercase text-[10px] tracking-wider mb-1">
