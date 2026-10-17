@@ -18,6 +18,7 @@ import {
   CreditCard,
   RefreshCw,
 } from 'lucide-react';
+import { HeroBackground } from '../../components/common/HeroBackground';
 
 interface FaqItem {
   id: string;
@@ -113,7 +114,7 @@ export const HelpSupportPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         
         {/* Header & Search */}
-        <div className="relative overflow-hidden rounded-3xl bg-navy-950 text-white p-8 sm:p-12 shadow-xl border border-slate-800 text-center">
+        <HeroBackground variant="card" className="rounded-3xl p-8 sm:p-12 shadow-xl border border-slate-800 text-center">
           <div className="max-w-3xl mx-auto space-y-4">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-600/30 text-blue-300 text-xs font-bold border border-blue-500/40">
               <HelpCircle className="w-3.5 h-3.5" />
@@ -140,7 +141,7 @@ export const HelpSupportPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </HeroBackground>
 
         {/* 3 Contact Support Channels */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

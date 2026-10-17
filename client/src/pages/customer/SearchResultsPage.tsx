@@ -20,6 +20,7 @@ import {
 import { flightApi } from '../../services/api';
 import { SearchFlightResult } from '../../types';
 import { LowFareCalendarBar } from '../../components/flights/LowFareCalendarBar';
+import { HeroBackground } from '../../components/common/HeroBackground';
 
 export const SearchResultsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -248,38 +249,37 @@ export const SearchResultsPage: React.FC = () => {
     (selectedOutbound?.totalFare || 0) + (selectedReturn?.totalFare || 0);
 
   return (
-    <div className={`bg-slate-50 min-h-screen py-8 ${tripType === 'roundtrip' ? 'pb-28' : ''}`}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Search Summary Header */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 mb-6">
+    <div className={`bg-slate-50 min-h-screen ${tripType === 'roundtrip' ? 'pb-28' : ''}`}>
+      {/* Search Summary Header Banner with Hero Background */}
+      <HeroBackground variant="banner" className="mb-6">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center space-x-2.5 text-xl sm:text-2xl font-black text-navy-950">
+              <div className="flex items-center space-x-2.5 text-xl sm:text-2xl font-black text-white">
                 <span>{origin}</span>
                 {tripType === 'roundtrip' ? (
-                  <RefreshCw className="w-5 h-5 text-blue-600" />
+                  <RefreshCw className="w-5 h-5 text-sky-400" />
                 ) : (
-                  <ArrowRight className="w-5 h-5 text-blue-600" />
+                  <ArrowRight className="w-5 h-5 text-sky-400" />
                 )}
                 <span>{destination}</span>
                 {tripType === 'roundtrip' && (
-                  <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-2">
+                  <span className="text-xs font-bold text-sky-200 bg-sky-900/60 border border-sky-400/40 px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-2">
                     Round Trip
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
+              <p className="text-xs sm:text-sm font-medium text-slate-300 mt-1">
                 {formatDateDisplay(travelDate)}
                 {tripType === 'roundtrip' ? ` — ${formatDateDisplay(returnDate)}` : ''} &bull; {adults} Adult{adults > 1 ? 's' : ''}
                 {children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''} &bull;{' '}
-                <span className="text-blue-600 font-semibold">{cabinClass.replace('_', ' ')}</span>
+                <span className="text-sky-300 font-semibold">{cabinClass.replace('_', ' ')}</span>
               </p>
             </div>
             <div>
               <button
                 onClick={() => setIsModifying(!isModifying)}
-                className="inline-flex items-center space-x-1.5 px-4 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition shadow-sm"
+                className="inline-flex items-center space-x-1.5 px-4 py-2 border border-white/20 rounded-xl text-xs sm:text-sm font-semibold text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition shadow-sm"
               >
                 <span>Modify Search</span>
                 {isModifying ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -398,6 +398,10 @@ export const SearchResultsPage: React.FC = () => {
             </form>
           )}
         </div>
+      </HeroBackground>
+
+      {/* Main Content Area */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
 
         {/* Round Trip Leg Switcher Tabs (MakeMyTrip Style) */}
         {tripType === 'roundtrip' && (

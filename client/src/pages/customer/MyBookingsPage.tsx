@@ -4,6 +4,7 @@ import { Plane, Calendar, Users, AlertCircle, ArrowRight, XCircle } from 'lucide
 import { bookingApi } from '../../services/api';
 import { Booking } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { HeroBackground } from '../../components/common/HeroBackground';
 import { useAuth } from '../../context/AuthContext';
 
 export const MyBookingsPage: React.FC = () => {
@@ -46,27 +47,35 @@ export const MyBookingsPage: React.FC = () => {
   const currentBookings = activeTab === 'upcoming' ? upcoming : past;
 
   return (
-    <div className="bg-slate-50 min-h-screen py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-6 border-b border-slate-200 gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-navy-950">My Bookings</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Manage your flight reservations, view tickets, and review cancellations.
-            </p>
-          </div>
-          <div>
-            <Link
-              to="/flights"
-              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition"
-            >
-              <Plane className="w-4 h-4 transform -rotate-45" />
-              <span>Book New Flight</span>
-            </Link>
+    <div className="bg-slate-50 min-h-screen">
+      {/* Customer Dashboard Banner */}
+      <HeroBackground variant="banner" className="mb-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-blue-500/30 text-blue-200 text-xs font-semibold mb-2 border border-blue-400/30">
+                <Plane className="w-3.5 h-3.5 transform -rotate-45" />
+                <span>Customer Reservation Dashboard</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-white">My Bookings</h1>
+              <p className="text-sm text-slate-300 mt-1">
+                Manage your confirmed flight reservations, download tickets, and review cancellations.
+              </p>
+            </div>
+            <div>
+              <Link
+                to="/flights"
+                className="inline-flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/40 transition"
+              >
+                <Plane className="w-4 h-4 transform -rotate-45" />
+                <span>Book New Flight</span>
+              </Link>
+            </div>
           </div>
         </div>
+      </HeroBackground>
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
 
         {/* Tab Controls */}
         <div className="flex space-x-2 border-b border-slate-200 mb-6">

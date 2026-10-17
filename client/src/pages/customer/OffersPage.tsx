@@ -13,6 +13,7 @@ import {
   Clock,
   Users,
 } from 'lucide-react';
+import { HeroBackground } from '../../components/common/HeroBackground';
 
 interface PromoOffer {
   id: string;
@@ -142,8 +143,8 @@ export const OffersPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         
         {/* Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-navy-950 text-white p-8 sm:p-12 shadow-xl border border-slate-800">
-          <div className="relative z-10 max-w-2xl space-y-4">
+        <HeroBackground variant="card" className="rounded-3xl p-8 sm:p-12 shadow-xl border border-slate-800">
+          <div className="max-w-2xl space-y-4">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-600/30 text-blue-300 text-xs font-bold border border-blue-500/40">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Exclusive Travel Offers & Deals</span>
@@ -164,12 +165,7 @@ export const OffersPage: React.FC = () => {
               </Link>
             </div>
           </div>
-
-          {/* Background Decorative Graphic */}
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/4 opacity-10 pointer-events-none hidden lg:block">
-            <Plane className="w-96 h-96 transform -rotate-45 text-white" />
-          </div>
-        </div>
+        </HeroBackground>
 
         {/* Feature Highlights Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

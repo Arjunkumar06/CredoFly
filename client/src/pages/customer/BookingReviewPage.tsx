@@ -24,6 +24,7 @@ import { FlightInstanceDetail, BookingFarePreview, Passenger } from '../../types
 import { BookingStepper } from '../../components/booking/BookingStepper';
 import { PaymentGatewayModal } from '../../components/booking/PaymentGatewayModal';
 import { SeatSelectionMap } from '../../components/booking/SeatSelectionMap';
+import { HeroBackground } from '../../components/common/HeroBackground';
 
 interface FormPassenger {
   title: string;
@@ -241,6 +242,19 @@ export const BookingReviewPage: React.FC = () => {
       return;
     }
     setIsPaymentModalOpen(true);
+  };
+
+  const handleImmediateConfirm = () => {
+    setError(null);
+    if (!user) {
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
+    }
+    if (!termsAccepted) {
+      setError('Please accept the fare and cancellation terms to proceed.');
+      return;
+    }
+    handlePaymentSuccess('DEMO_PAY');
   };
 
   const handlePaymentSuccess = async (
@@ -1071,24 +1085,44 @@ export const BookingReviewPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
+                <div className="flex flex-col sm:flex-row items-center justify-between pt-4 gap-4 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setStep(2)}
-                    className="px-5 py-2.5 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition"
+                    className="w-full sm:w-auto px-5 py-2.5 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition"
                   >
                     &larr; Edit Passengers
                   </button>
-                  <button
-                    type="button"
-                    disabled={isBookingSubmitting}
-                    onClick={handleInitiatePayment}
-                    className="px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/30 flex items-center space-x-2 transition"
-                  >
-                    <Lock className="w-4 h-4" />
-                    <span>Proceed to Secure Payment</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      disabled={isBookingSubmitting}
+                      onClick={handleInitiatePayment}
+                      className="w-full sm:w-auto px-4 py-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center space-x-1.5"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Pay via UPI / Card (Optional)</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBookingSubmitting}
+                      onClick={handleImmediateConfirm}
+                      className="w-full sm:w-auto px-7 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition"
+                    >
+                      {isBookingSubmitting ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Confirming Reservation...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                          <span>Confirm Booking (Instant)</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

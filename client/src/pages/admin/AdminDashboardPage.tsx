@@ -123,7 +123,7 @@ export const AdminDashboardPage: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            to="/admin/schedules"
+            to="/admin/schedule"
             className="inline-flex items-center space-x-2 px-4 py-2.5 bg-navy-950 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-sm transition"
           >
             <Calendar className="w-4 h-4 text-blue-400" />

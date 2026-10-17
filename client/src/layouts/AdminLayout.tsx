@@ -142,19 +142,25 @@ export const AdminLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-30">
-          <div className="flex items-center space-x-3">
-            <span className="text-sm font-medium text-slate-500">CredoFly Airline Engine</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-sm font-semibold text-slate-800 capitalize">
-              {location.pathname.replace('/admin/', '').replace('-', ' ') || 'Dashboard'}
-            </span>
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-              Live Operations
-            </span>
+        <header
+          className="h-16 bg-navy-950 text-white border-b border-navy-800 flex items-center justify-between px-8 sticky top-0 z-30 bg-cover bg-[center_right] relative overflow-hidden"
+          style={{ backgroundImage: "url('/images/credofly-hero.jpg')" }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-navy-950/95 via-navy-950/90 to-blue-950/70 pointer-events-none" />
+          <div className="relative z-10 flex items-center justify-between w-full">
+            <div className="flex items-center space-x-3">
+              <span className="text-sm font-medium text-slate-300">CredoFly Airline Engine</span>
+              <span className="text-slate-500">/</span>
+              <span className="text-sm font-bold text-white capitalize">
+                {location.pathname.replace('/admin/', '').replace('-', ' ') || 'Dashboard'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-900/60 text-emerald-300 border border-emerald-500/40 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+                Live Operations
+              </span>
+            </div>
           </div>
         </header>
 
