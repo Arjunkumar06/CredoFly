@@ -37,7 +37,12 @@ export const LoginPage: React.FC = () => {
         navigate(redirect, { replace: true });
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid credentials. Check your Customer ID/email and password.');
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Invalid credentials. Check your Customer ID/email and password.'
+      );
     } finally {
       setIsLoading(false);
     }

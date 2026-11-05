@@ -65,7 +65,12 @@ export const RegisterPage: React.FC = () => {
         setCreatedToken(res.data.token);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Registration failed.');
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Registration failed.'
+      );
     } finally {
       setIsLoading(false);
     }

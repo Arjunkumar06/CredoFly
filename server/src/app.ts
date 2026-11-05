@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { prisma } from './db.js';
 import authRoutes from './routes/authRoutes.js';
 import flightRoutes from './routes/flightRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
@@ -62,8 +63,33 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+  const dbConfigured = Boolean(process.env.DATABASE_URL);
+  let dbConnected = false;
+  let dbError: string | null = null;
+
+  if (dbConfigured) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbConnected = true;
+    } catch (err: any) {
+      dbError = err?.message || 'Database ping failed';
+    }
+  } else {
+    dbError = 'DATABASE_URL environment variable is missing';
+  }
+
+  const isHealthy = dbConfigured && dbConnected;
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'degraded',
+    database: {
+      configured: dbConfigured,
+      connected: dbConnected,
+      error: dbError,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Mount modular API routes
