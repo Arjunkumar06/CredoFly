@@ -1,5 +1,4 @@
 # CredoFly — Flight Booking Platform
-# live demo: "https://credofly-60u7.onrender.com/"
 
 ## 1. Setup Instructions
 
@@ -57,6 +56,7 @@ npm run dev
 - **Frontend Portal**: [http://localhost:5001](http://localhost:5001)
 - **Backend API**: [http://localhost:5000](http://localhost:5000)
 - **API Health Check**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
+- **live demo**: [https://credofly-60u7.onrender.com/).
 
 ### Step 6: Run Automated Tests
 Execute the full Vitest integration and unit test suite:
